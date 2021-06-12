@@ -4,6 +4,7 @@
 // Image Size     : 240x135 pixels
 // Memory usage   : 64800 bytes
 
+#include <Arduino.h>
 
 #if defined(__AVR__)
     #include <avr/pgmspace.h>
