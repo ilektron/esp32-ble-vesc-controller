@@ -11,6 +11,7 @@
 #include "joystick.h"
 #include <Button2.h>
 #include "esp_adc_cal.h"
+#include "VescUart.h"
 
 #define ADC_EN              14  //ADC_EN is the ADC detection enable port
 #define ADC_VIN_PIN         34
