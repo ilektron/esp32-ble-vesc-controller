@@ -1,3 +1,6 @@
 [submodule "lib/TFT_eSPI"]
 	path = lib/TFT_eSPI
 	url = git@github.com:ilektron/TFT_eSPI.git
+[submodule "lib/VescUart"]
+	path = lib/VescUart
+	url = git@github.com:ilektron/VescUart.git
