@@ -12,6 +12,8 @@
 #include <Button2.h>
 #include "esp_adc_cal.h"
 #include "VescUart.h"
+#include <array>
+#include <BluetoothSerial.h>
 
 #define ADC_EN              14  //ADC_EN is the ADC detection enable port
 #define ADC_VIN_PIN         34
@@ -40,6 +42,8 @@ void setup() {
   // initialize serial communication at 115200 bits per second:
   Serial.begin(115200);
   Serial.println("Start");
+
+  
 
   // Deep sleep code
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
@@ -74,7 +78,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     TaskRadio
     ,  "Radio"
-    ,  2024  // Stack size
+    ,  16000  // Stack size
     ,  NULL
     ,  1  // Priority
     ,  NULL
