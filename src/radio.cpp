@@ -35,9 +35,11 @@
 
 // Global copy of slave
 esp_now_peer_info_t slave;
-#define CHANNEL 3
-#define PRINTSCANRESULTS 0
-#define DELETEBEFOREPAIR 0
+constexpr uint32_t CHANNEL = 0;
+constexpr uint32_t PRINTSCANRESULTS = 1;
+constexpr uint32_t DELETEBEFOREPAIR = 1;
+
+uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 void InitESPNow();
 void ScanForSlave();
@@ -78,6 +80,7 @@ void ScanForSlave() {
       String SSID = WiFi.SSID(i);
       int32_t RSSI = WiFi.RSSI(i);
       String BSSIDstr = WiFi.BSSIDstr(i);
+			int32_t channel = WiFi.channel(i);
 
       if (PRINTSCANRESULTS) {
         Serial.print(i + 1);
@@ -94,6 +97,7 @@ void ScanForSlave() {
         // SSID of interest
         Serial.println("Found a Slave.");
         Serial.print(i + 1); Serial.print(": "); Serial.print(SSID); Serial.print(" ["); Serial.print(BSSIDstr); Serial.print("]"); Serial.print(" ("); Serial.print(RSSI); Serial.print(")"); Serial.println("");
+				Serial.printf("Channel: %d\n", channel);
         // Get BSSID => Mac Address of the Slave
         int mac[6];
         if ( 6 == sscanf(BSSIDstr.c_str(), "%x:%x:%x:%x:%x:%x",  &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5] ) ) {
