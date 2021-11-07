@@ -37,10 +37,10 @@ void draw_joystick(Joystick& j) {
 
   if (last_x != x || last_y != y) {
     tft.setRotation(0);
-    Serial.print("posx: ");
-    Serial.print(x);
-    Serial.print("\tposy: ");
-    Serial.println(y);
+    //Serial.print("posx: ");
+    //Serial.print(x);
+    //Serial.print("\tposy: ");
+    //Serial.println(y);
     joy.fillSprite(TFT_BLACK);
     joy.drawCircle(JOY_SIZE/2, JOY_SIZE/2, JOY_SIZE/2 - 1, TFT_GOLD);
     joy.fillCircle(x, y, 3, TFT_GOLD);

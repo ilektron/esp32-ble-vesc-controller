@@ -188,8 +188,18 @@ void TaskRadio(void *pvParameters)  // This is a task.
 
   constexpr auto xDelay = 30000u/portTICK_PERIOD_MS;
   for (;;)
-  {
+  { 
     radio_run();
+    char c = 0;
+    while (Serial.available()) {
+      Serial.read(&c, 1);
+      if (c == 'q') {
+        ESP.restart();
+      } else {
+        Serial.print(c);
+      }
+
+    }
     vTaskDelay(xDelay); 
   }
 }
