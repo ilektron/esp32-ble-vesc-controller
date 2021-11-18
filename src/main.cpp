@@ -11,6 +11,7 @@
 #include "esp_adc_cal.h"
 #include "joystick.h"
 #include "radio.h"
+#include "soc/rtc_wdt.h"
 #include <BluetoothSerial.h>
 #include <Button2.h>
 #include <array>
@@ -42,12 +43,14 @@ float battery_voltage = 0.0f;
 // the setup function runs once when you press reset or power the board
 void setup() {
 
+  rtc_wdt_protect_off();
+  rtc_wdt_disable();
   // initialize serial communication at 115200 bits per second:
-  Serial.begin(115200);
+  Serial.begin(1000000);
   Serial.println("Start");
 
   // Deep sleep code
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+  // esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
 
   Serial.println("Creating queues");
   auto xBLEQueue = xQueueCreate(10, sizeof(unsigned long));
@@ -74,7 +77,7 @@ void setup() {
 
   // TODO: Could pin this to the alternate core so that we have the most reliable communication
   xTaskCreatePinnedToCore(TaskRadio, "Radio",
-                          8192, // Stack size
+                          8192 * 2, // Stack size
                           nullptr,
                           4, // Priority
                           nullptr, ARDUINO_RUNNING_CORE);
@@ -178,7 +181,7 @@ void TaskRadio(void *pvParameters) // This is a task.
 
   radio_init();
 
-  constexpr auto xDelay = 30000u / portTICK_PERIOD_MS;
+  constexpr auto xDelay = 1000u / portTICK_PERIOD_MS;
   for (;;) {
     radio_run();
     char c = 0;
