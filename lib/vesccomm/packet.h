@@ -8,8 +8,8 @@
 #include <assert.h>
 #include <cstdint>
 #include <math.h>
-#include <type_traits>
 #include <string>
+#include <type_traits>
 
 namespace vesc {
 
@@ -17,29 +17,27 @@ constexpr const auto PACKET_MAX_PL_LEN = 512u;
 constexpr const auto PACKET_EXTRA_BYTES = 8u;
 constexpr const auto PACKET_MAX_LEN = PACKET_MAX_PL_LEN + PACKET_EXTRA_BYTES;
 
-template <std::size_t _size> class payload {
+template <std::size_t _size> class buffer {
 public:
   // Default initializor will just start at the beginning.
-  payload() : _len{} {
-    _head = _data.begin();
-  }
+  buffer() : _len{} { _head = _data.begin(); }
 
-  payload(std::initializer_list<uint8_t> d) : _len{} {
+  buffer(std::initializer_list<uint8_t> d) : _len{} {
     assert(_size >= d.size());
     _head = _data.begin();
     copy(d);
   }
 
-  ~payload() = default;
+  ~buffer() = default;
 
   // TODO: This should return the filled capacity not the total capacity, but might work for now
   const size_t len() { return _len; }
 
-  // Just throw a type in here and it will append it to the payload
+  // Just throw a type in here and it will append it to the buffer
   // This is a specialization for int types, and simply shifts the int into the
   // stream
   template <class T, typename = typename std::enable_if<std::is_integral<T>::value, T>::type> int append(T val) {
-    // Start by shifting MSB to LSB into payload
+    // Start by shifting MSB to LSB into buffer
     for (int i = sizeof(T) - 1; i >= 0; i--, _len++) {
       *(end()) = (val >> (i * 8)) & 0xFF;
     }
@@ -47,7 +45,10 @@ public:
   };
 
   // Type T must have a begin() and end() function that match with std::copy
-  template <class T> void copy(T t) {  std::copy(t.begin(), t.end(), end()); _len += std::distance(t.begin(), t.end()); }
+  template <class T> void copy(T t) {
+    std::copy(t.begin(), t.end(), end());
+    _len += std::distance(t.begin(), t.end());
+  }
 
   // The float32 version of this function is pulled from append_float32_auto
   // The reasoning behind this is to create a portable method for serializing floating point values
@@ -75,7 +76,7 @@ public:
     return mlen;
   }
 
-  // Shift out the value from the payload a byte at a time
+  // Shift out the value from the buffer a byte at a time
   template <class T> T get() {
     T val{};
 
@@ -122,6 +123,7 @@ private:
   // Keep the data and the index in an actual std::array for safe keeping
   std::array<uint8_t, _size> _data;
   typename std::array<uint8_t, _size>::iterator _head;
+  // We do it this way to avoid having a reference to the arrd::end() that doesn't work with arithmetic
   size_t _len;
 };
 
@@ -133,13 +135,18 @@ public:
   // Default constructor
   packet() = default;
 
-  // Constructor that takes in a payload, or anything that has begin and end and a len() function
-  template <class T> packet(T payload) {
+  // Constructor that takes in a buffer, or anything that has begin and end and a len() function
+  template <class T> packet(T buffer) { construct(buffer); }
+  ~packet() = default;
+
+  // Take in a buffer and insert it. Assumes that input has begin() and end(), should work with most stl containers
+  // using a uint8_t type element
+  template <class T> void construct(T buffer) {
     // Not SFINAE?
 
-    // Set up the first byte to tell if this payload is greater than 256
-    auto mlen = payload.len();
-    if (payload.len() > 256) {
+    // Set up the first byte to tell if this buffer is greater than 256
+    auto mlen = std::distance(buffer.begin(), buffer.end());
+    if (mlen > 256) {
       _buffer.append<uint8_t>(0x03);
       _buffer.append<uint16_t>(mlen);
     } else {
@@ -147,24 +154,23 @@ public:
       _buffer.append<uint8_t>(mlen);
     }
 
-    // Copy the payload
-    _buffer.copy(payload);
+    // Copy the buffer
+    _buffer.copy(buffer);
     // Insert the CRC
-    _buffer.append<uint16_t>(payload.crc());
+    _buffer.append<uint16_t>(buffer.crc());
     // Add the final byte
     _buffer.append<uint8_t>(0x03);
   }
-  ~packet() = default;
 
   // Used for reading out the data
-  payload<PACKET_MAX_LEN> data() { return _buffer; }
+  buffer<PACKET_MAX_LEN> data() { return _buffer; }
 
   const size_t len() { return _buffer.len(); }
 
   operator uint8_t *() { return _buffer; }
 
 private:
-  payload<PACKET_MAX_LEN> _buffer;
+  buffer<PACKET_MAX_LEN> _buffer;
 };
 
 }; // namespace vesc

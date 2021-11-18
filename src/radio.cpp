@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <BLEDevice.h>
 #include <array>
+#include <memory>
 
 // The remote Nordic UART service service we wish to connect to.
 // This service exposes two characteristics: one for transmitting and one for receiving (as seen from the client).
@@ -17,7 +18,7 @@ static BLEUUID charUUID_RX("6e400002-b5a3-f393-e0a9-e50e24dcca9e"); // RX Charac
 // the server can send data to the client as notifications.
 static BLEUUID charUUID_TX("6e400003-b5a3-f393-e0a9-e50e24dcca9e"); // TX Characteristic
 
-static BLEAddress *pServerAddress;
+static std::unique_ptr<BLEAddress> pServerAddress;
 
 // This is a messaging tool to let the init function know that a proper BLE device is connected
 // Should change to a task notification for better performance?
@@ -29,14 +30,20 @@ static BLERemoteCharacteristic *pRXCharacteristic;
 // Our buffer for sending and receiving packets
 constexpr const auto PACKET_QUEUE_SIZE = 5u;
 
-static vesc::payload<1u> fwp = {COMM_FW_VERSION};
+static vesc::buffer<1u> fwp = {COMM_FW_VERSION};
 static vesc::packet fwpacket(fwp);
 
 QueueHandle_t rxPackets;
 QueueHandle_t txPackets;
-BLEState ble_state;
+BLEState bleState;
 
-static vesc::payload<vesc::PACKET_MAX_PL_LEN> rx_buffer;
+static vesc::buffer<vesc::PACKET_MAX_PL_LEN> rx_buffer;
+
+// Function prototypes
+void ble_init();
+void ble_reset();
+void ble_scanning();
+
 // This is the callback functions that gets data from the ble service, which in this case should be data that the vesc
 // sends back to us. Is this called in an ISR?
 
@@ -56,23 +63,31 @@ static void notifyCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic, ui
   Serial.println(" <<");
 }
 
-bool connectToServer(BLEAddress pAddress) {
+// Returns a reference to the newly created client that is connected to the server
+// If the connection fails, returns a nullptr and an invalid client object
+std::unique_ptr<BLEClient> connectToServer(BLEAddress pAddress) {
   Serial.print("Establishing a connection to device address: ");
   Serial.println(pAddress.toString().c_str());
 
-  BLEClient *pClient = BLEDevice::createClient();
+  // TODO: Figure out where this client pointer should live
+  // Can we delete this client object or do we need to hold it for a period of time?
+  // We might need to return this object because the client is what we need to hold onto
+  std::unique_ptr<BLEClient> client(BLEDevice::createClient());
   Serial.println(" - Created client");
 
   // Connect to the remove BLE Server.
-  pClient->connect(pAddress, BLE_ADDR_TYPE_RANDOM);
+  if (!client->connect(pAddress, BLE_ADDR_TYPE_RANDOM)) {
+    Serial.println("Failed to connect to server");
+    return nullptr;
+  }
   Serial.println(" - Connected to server");
 
   // Obtain a reference to the Nordic UART service on the remote BLE server.
-  BLERemoteService *pRemoteService = pClient->getService(serviceUUID);
+  BLERemoteService *pRemoteService = client->getService(serviceUUID);
   if (pRemoteService == nullptr) {
     Serial.print("Failed to find Nordic UART service UUID: ");
     Serial.println(serviceUUID.toString().c_str());
-    return false;
+    return nullptr;
   }
   Serial.println(" - Remote BLE service reference established");
 
@@ -81,13 +96,13 @@ bool connectToServer(BLEAddress pAddress) {
   if (pTXCharacteristic == nullptr) {
     Serial.print("Failed to find TX characteristic UUID: ");
     Serial.println(charUUID_TX.toString().c_str());
-    return false;
+    return nullptr;
   }
   Serial.println(" - Remote BLE TX characteristic reference established");
 
   pTXCharacteristic->registerForNotify(notifyCallback);
-  const uint8_t v[] = {0x1, 0x0};
-  pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t *)v, 2, true);
+  // const uint8_t v[] = {0x1, 0x0};
+  // pTXCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t *)v, 2, true);
   Serial.println(" - Registered for callback");
 
   // Obtain a reference to the RX characteristic of the Nordic UART service on the remote BLE server.
@@ -95,11 +110,11 @@ bool connectToServer(BLEAddress pAddress) {
   if (pRXCharacteristic == nullptr) {
     Serial.print("Failed to find our characteristic UUID: ");
     Serial.println(charUUID_RX.toString().c_str());
-    return false;
+    return nullptr;
   }
   Serial.println(" - Remote BLE RX characteristic reference established");
 
-  return true;
+  return client;
 }
 
 // Scan for BLE servers and find the first one that advertises the Nordic UART service.
@@ -112,9 +127,10 @@ class AdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     // We have found a device, check to see if it contains the Nordic UART service.
     if (advertisedDevice.haveServiceUUID()) {
       Serial.println("Checking serviceid: ");
-      Serial.printf("ID: %s", advertisedDevice.toString().c_str());
+      Serial.printf("ID: %s\n", advertisedDevice.toString().c_str());
       // Devices can have multiple service UUIDs
       for (auto i = 0ul; i < advertisedDevice.getServiceUUIDCount(); i++) {
+        // Should check the name as well to make sure that this is an appropriate device
         if (advertisedDevice.getServiceUUID(i).equals(serviceUUID)) {
           Serial.print("BLE Advertised Device found - ");
           Serial.println(advertisedDevice.toString().c_str());
@@ -122,71 +138,120 @@ class AdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
           Serial.println("Found a device with the desired ServiceUUID!");
           advertisedDevice.getScan()->stop();
 
-          pServerAddress = new BLEAddress(advertisedDevice.getAddress());
+          // Use reset in case we are calling this again
+          Serial.println("Reseting the server address");
+          pServerAddress.reset(new BLEAddress(advertisedDevice.getAddress()));
+
           // Unblock the task waiting for us to discover the proper device
+          Serial.println("Unblocking our scanning task");
           xSemaphoreGive(xDoConnect);
         }
       }
-    } else if (advertisedDevice.getName().length() > 0) {
-      Serial.println("Checking name");
-      if (advertisedDevice.getName().substr(0, 5) == "Unity") {
-        Serial.println("Found controller");
-        Serial.print("BLE Advertised Device found - ");
-        Serial.println(advertisedDevice.toString().c_str());
-
-        Serial.println("Found a device with the desired ServiceUUID!");
-        advertisedDevice.getScan()->stop();
-
-        pServerAddress = new BLEAddress(advertisedDevice.getAddress());
-        // Unblock the task waiting for us to discover the proper device
-        xSemaphoreGive(xDoConnect);
-      }
     }
   }
-};
+} xCallbacks;
 
-// Set up our bluetooth connection
-void radio_init() {
+void ble_init() {
+  // Initialize our state machine
+  bleState = BLEState::INIT;
   Serial.println("\nStarting Arduino BLE Central Mode (Client) Nordic UART Service");
 
   // Create the semaphore for allowing us to move forward once we're connected to a BLE device
   xDoConnect = xSemaphoreCreateBinary();
 
   // Init takes a name of the BLE device
+  // TODO: Figure out if calling this multiple times is bad
   BLEDevice::init("MagicControl");
 
   // Retrieve a Scanner and set the callback we want to use to be informed when we
   // have detected a new device. Specify that we want active scanning and start the
   // scan to run for 30 seconds.
+  // Signleton object, don't delete
   BLEScan *pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new AdvertisedDeviceCallbacks());
+  // Set our callbacks for the scan
+  pBLEScan->setAdvertisedDeviceCallbacks(&xCallbacks);
+  // Set state right before starting scan to avoid race condition
+  bleState = BLEState::SCANNING;
   pBLEScan->setActiveScan(true);
   // Start the scan. If we get a matching device, the scan stops
   // TODO might need a pairing mode that listens for all devices and then allows a user
   // to select the desired device
   pBLEScan->start(30);
-
-  // Here we should block until we find a device and then unblock once we can move forward
-  if (xSemaphoreTake(xDoConnect, 30000u / portTICK_PERIOD_MS) == pdTRUE) {
-    if (connectToServer(*pServerAddress)) {
-      Serial.println("We are now connected to the BLE Server");
-    } else {
-      Serial.println("We have failed to connect to the server; there is nothin more we will do.");
-    }
-  } else {
-    Serial.println("Failed to discover appropriate BLE device");
-  }
-
-  vSemaphoreDelete(xDoConnect);
-
-  vTaskDelay(5000 / portTICK_PERIOD_MS);
 }
 
-// This is poorly structured and rather than using simple flags, a proper FreeRTOS blocking semaphore would be better to
-// ensure that everything happens in the correct order and we just don't run if we're waiting for something
+void ble_scanning() {
+  // TODO: Create a state that assembles a list of viable devices and lets the user select the desired device to connect
+  // to.
+  // Here we should block until we find a device and then unblock once we can move forward
+  if (xSemaphoreTake(xDoConnect, 30000u / portTICK_PERIOD_MS) == pdTRUE) {
+    Serial.println("Found a device, let's connect to it");
+    bleState = BLEState::FOUND_DEVICE;
+  } else {
+    Serial.println("Failed to discover appropriate BLE device, let's scan again");
+    ble_reset();
+  }
+
+  Serial.println("Deleting semaphore");
+  vSemaphoreDelete(xDoConnect);
+}
+
+void ble_found_device() {
+  static std::unique_ptr<BLEClient> pClient{};
+  Serial.printf("Connecting to server: %s\n", pServerAddress->toString().c_str());
+  // Reset our client to the new one
+  pClient = connectToServer(*pServerAddress);
+  if (pClient) {
+    bleState = BLEState::CONNECTED;
+    Serial.println("We are now connected to the BLE Server");
+  } else {
+    Serial.println(
+        "We have failed to connect to the server; there is nothin more we will do. Reseting and trying again");
+    // Should re-init?
+    ble_reset();
+  }
+}
+
+void ble_connected() {
+  // Yay! Let's get the device info
+  bleState = BLEState::READING_DEVICE_INFO;
+}
+
+void ble_get_device_info() {
+  // TODO: Block for reply using semaphore. Release semaphore if not the reply that we're waiting for
+  Serial.printf("Constructed packet, sending fw version request len:%i\n", fwpacket.len());
+  pRXCharacteristic->writeValue(static_cast<uint8_t *>(fwpacket), fwpacket.len(), true);
+  Serial.println("Should block here for reply");
+  vTaskDelay(1000u / portTICK_PERIOD_MS);
+}
+
+void ble_reset() {
+  // Give things a second
+  vTaskDelay(1000u / portTICK_PERIOD_MS);
+  BLEDevice::deinit();
+  ble_init();
+}
+
+// Set up our bluetooth connection
+void radio_init() {
+  ble_init();
+  vTaskDelay(300 / portTICK_PERIOD_MS);
+}
 
 void radio_run() {
 
+  switch (bleState) {
+  case BLEState::INIT: ble_init(); break;
+  case BLEState::SCANNING: ble_scanning(); break;
+  case BLEState::FOUND_DEVICE: ble_found_device(); break;
+  case BLEState::CONNECTED: ble_connected(); break;
+  case BLEState::READING_DEVICE_INFO: ble_get_device_info(); break;
+  // Not sure if we need this state
+  case BLEState::PAIRED: break;
+  default:
+    // Should reset radio and reconnect?
+    // Check if connection is still valid. If we disconnected, reset!
+    break;
+  }
   // Serial.print("Running radio"); probably don't want to do this if we hope for low latency and are running often to
   // check if new data has arrived
 
@@ -202,10 +267,6 @@ void radio_run() {
 
   // pRXCharacteristic->writeValue(timeSinceBoot.c_str(), timeSinceBoot.length());
   // pTXCharacteristic->readRawData();
-
-  Serial.printf("Constructed packet, sending fw version request len:%i\n", fwpacket.len());
-  pRXCharacteristic->writeValue(static_cast<uint8_t*>(fwpacket), fwpacket.len(), true);
-  Serial.println("BLE Yay!");
 }
 
 /* Central Mode (client) BLE UART for ESP32

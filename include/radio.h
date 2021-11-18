@@ -9,7 +9,7 @@ enum class BLEState {
   PAIRED
 };
 
-extern BLEState ble_state;
+extern BLEState bleState;
 
 void radio_init();
 void radio_run();

@@ -16,13 +16,13 @@ std::string toString(vesc::packet p) {
   return ss.str();
 }
 
-void test_payload_init() {
-  vesc::payload<1> p;
+void test_buffer_init() {
+  vesc::buffer<1> p;
   TEST_ASSERT_EQUAL(p.len(), 0);
 }
 
-void test_payload_append_uint8_t() {
-  vesc::payload<100> p;
+void test_buffer_append_uint8_t() {
+  vesc::buffer<100> p;
 
   p.append<uint8_t>(0x11);
   TEST_ASSERT_EQUAL(p.len(), 1);
@@ -30,8 +30,8 @@ void test_payload_append_uint8_t() {
   TEST_ASSERT_EQUAL(0x11, i);
 }
 
-void test_payload_append_int8_t() {
-  vesc::payload<100> p;
+void test_buffer_append_int8_t() {
+  vesc::buffer<100> p;
 
   p.append<int8_t>(-5);
   TEST_ASSERT_EQUAL(p.len(), 1);
@@ -39,8 +39,8 @@ void test_payload_append_int8_t() {
   TEST_ASSERT_EQUAL(-5, i);
 }
 
-void test_payload_append_uint16_t() {
-  vesc::payload<100> p;
+void test_buffer_append_uint16_t() {
+  vesc::buffer<100> p;
 
   p.append<uint16_t>(0xF011);
   TEST_ASSERT_EQUAL(p.len(), 2);
@@ -48,8 +48,8 @@ void test_payload_append_uint16_t() {
   TEST_ASSERT_EQUAL(0xF011, i);
 }
 
-void test_payload_append_int16_t() {
-  vesc::payload<100> p;
+void test_buffer_append_int16_t() {
+  vesc::buffer<100> p;
 
   p.append<int16_t>(-1022);
   TEST_ASSERT_EQUAL(p.len(), 2);
@@ -57,8 +57,8 @@ void test_payload_append_int16_t() {
   TEST_ASSERT_EQUAL(-1022, i);
 }
 
-void test_payload_append_uint32_t() {
-  vesc::payload<100> p;
+void test_buffer_append_uint32_t() {
+  vesc::buffer<100> p;
 
   p.append<uint32_t>(0xF01142AA);
   TEST_ASSERT_EQUAL(p.len(), 4);
@@ -66,8 +66,8 @@ void test_payload_append_uint32_t() {
   TEST_ASSERT_EQUAL(0xF01142AA, i);
 }
 
-void test_payload_append_int32_t() {
-  vesc::payload<100> p;
+void test_buffer_append_int32_t() {
+  vesc::buffer<100> p;
 
   p.append<int32_t>(-10223932);
   TEST_ASSERT_EQUAL(p.len(), 4);
@@ -75,10 +75,10 @@ void test_payload_append_int32_t() {
   TEST_ASSERT_EQUAL(-10223932, i);
 }
 
-void test_payload_append_float() {
+void test_buffer_append_float() {
 
   TEST_ASSERT_EQUAL(4, sizeof(float));
-  vesc::payload<100> p;
+  vesc::buffer<100> p;
 
   auto f = -3.2435234;
   p.append(f);
@@ -87,8 +87,8 @@ void test_payload_append_float() {
   TEST_ASSERT_EQUAL_FLOAT(f, i);
 }
 
-void test_payload_append_multiple() {
-  vesc::payload<100> p;
+void test_buffer_append_multiple() {
+  vesc::buffer<100> p;
 
   std::vector<int32_t> values = {100, -20, 23290809, -20200392, 0, -1, 1, 0x7FFFFFFF, 0x700000};
 
@@ -101,8 +101,8 @@ void test_payload_append_multiple() {
   }
 }
 
-void test_payload_append_multiple_types() {
-  vesc::payload<100> p;
+void test_buffer_append_multiple_types() {
+  vesc::buffer<100> p;
 
   p.append<int32_t>(23984);
   p.append<uint32_t>(1);
@@ -126,8 +126,8 @@ void test_payload_append_multiple_types() {
   TEST_ASSERT_EQUAL(0x112233, p.get<int32_t>());
 }
 
-void test_payload_append_buffer() {
-  vesc::payload<100> p;
+void test_buffer_append_buffer() {
+  vesc::buffer<100> p;
 
   std::string str = "Hello!";
 
@@ -142,9 +142,9 @@ void test_payload_append_buffer() {
   TEST_ASSERT_EQUAL('!', p.get<uint8_t>());
 }
 
-void test_payload_copy_payload() {
-  vesc::payload<6> p1 = {'H', 'e', 'l', 'l', 'o', '!'};
-  vesc::payload<100> p2;
+void test_buffer_copy_buffer() {
+  vesc::buffer<6> p1 = {'H', 'e', 'l', 'l', 'o', '!'};
+  vesc::buffer<100> p2;
 
   TEST_ASSERT_EQUAL_MESSAGE(6, p1.len(), "Initializer list failed");
 
@@ -160,8 +160,8 @@ void test_payload_copy_payload() {
   TEST_ASSERT_EQUAL('!', p2.get<uint8_t>());
 }
 
-void test_payload_initializer_list() {
-  vesc::payload<6> p = {'H', 'e', 'l', 'l', 'o', '!'};
+void test_buffer_initializer_list() {
+  vesc::buffer<6> p = {'H', 'e', 'l', 'l', 'o', '!'};
 
   TEST_ASSERT_EQUAL(6, p.len());
   TEST_ASSERT_EQUAL('H', p.get<uint8_t>());
@@ -172,21 +172,21 @@ void test_payload_initializer_list() {
   TEST_ASSERT_EQUAL('!', p.get<uint8_t>());
 }
 
-void test_packet_from_payload() {
-  vesc::payload<6> p1 = {'H', 'e', 'l', 'l', 'o', '!'};
+void test_packet_from_buffer() {
+  vesc::buffer<6> p1 = {'H', 'e', 'l', 'l', 'o', '!'};
 
   vesc::packet packet1(p1);
 
-  // Should be start byte + len + payload + 16 bit crc + stop
+  // Should be start byte + len + buffer + 16 bit crc + stop
   TEST_ASSERT_EQUAL_MESSAGE(11, packet1.len(), toString(p1).c_str());
 
-  vesc::payload<1u> p2 = {0};
+  vesc::buffer<1u> p2 = {0};
 
   vesc::packet packet2(p2);
 
   TEST_ASSERT_EQUAL(6, packet2.len());
 
-  vesc::payload<vesc::PACKET_MAX_PL_LEN> p3;
+  vesc::buffer<vesc::PACKET_MAX_PL_LEN> p3;
   for (auto i = 0ul; i < vesc::PACKET_MAX_PL_LEN / 2; i++) {
     p3.append<uint16_t>(i);
   }
@@ -198,7 +198,7 @@ void test_packet_from_payload() {
 
 void test_byte_order() {
   auto i = 0x11223344;
-  vesc::payload<4> p;
+  vesc::buffer<4> p;
   p.append<uint32_t>(i);
 
   TEST_ASSERT_EQUAL(0x11, p.get<uint8_t>());
@@ -208,7 +208,7 @@ void test_byte_order() {
 }
 
 void test_simple_packet() {
-  vesc::payload<1> p1 = {0};
+  vesc::buffer<1> p1 = {0};
   std::array<uint8_t, 6> p2 = {0x02, 0x01, 0x00, 0x00, 0x00, 0x03};
   vesc::packet pack(p1);
 
@@ -220,22 +220,22 @@ void test_simple_packet() {
 int main(int argc, char *argv[]) {
   UNITY_BEGIN();
 
-  RUN_TEST(test_payload_init);
-  RUN_TEST(test_payload_append_uint8_t);
-  RUN_TEST(test_payload_append_int8_t);
-  RUN_TEST(test_payload_append_uint16_t);
-  RUN_TEST(test_payload_append_int16_t);
-  RUN_TEST(test_payload_append_uint32_t);
-  RUN_TEST(test_payload_append_int32_t);
-  RUN_TEST(test_payload_append_float);
-  RUN_TEST(test_payload_append_multiple);
-  RUN_TEST(test_payload_append_multiple_types);
-  RUN_TEST(test_payload_append_buffer);
-  RUN_TEST(test_payload_copy_payload);
-  RUN_TEST(test_payload_initializer_list);
+  RUN_TEST(test_buffer_init);
+  RUN_TEST(test_buffer_append_uint8_t);
+  RUN_TEST(test_buffer_append_int8_t);
+  RUN_TEST(test_buffer_append_uint16_t);
+  RUN_TEST(test_buffer_append_int16_t);
+  RUN_TEST(test_buffer_append_uint32_t);
+  RUN_TEST(test_buffer_append_int32_t);
+  RUN_TEST(test_buffer_append_float);
+  RUN_TEST(test_buffer_append_multiple);
+  RUN_TEST(test_buffer_append_multiple_types);
+  RUN_TEST(test_buffer_append_buffer);
+  RUN_TEST(test_buffer_copy_buffer);
+  RUN_TEST(test_buffer_initializer_list);
   RUN_TEST(test_byte_order);
 
-  RUN_TEST(test_packet_from_payload);
+  RUN_TEST(test_packet_from_buffer);
   RUN_TEST(test_simple_packet);
   UNITY_END();
   return 0;
