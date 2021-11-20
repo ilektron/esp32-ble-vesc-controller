@@ -170,6 +170,8 @@ void TaskDisplay(void *pvParameters) // This is a task.
   for (;;) {
     draw_joystick(joystick);
     draw_battery(battery_voltage);
+    draw_ble_state();
+    draw_controller_state(controller);
     vTaskDelay(xDelay);
   }
 }

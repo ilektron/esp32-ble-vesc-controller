@@ -4,6 +4,7 @@
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include "joystick.h"
+#include "vesc.h"
 
 
 void init_tft();
@@ -13,3 +14,5 @@ void TFT_wake();
 
 void draw_joystick(Joystick& j);
 void draw_battery(float battery_voltage);
+void draw_ble_state();
+void draw_controller_state(const vesc::controller& controller);

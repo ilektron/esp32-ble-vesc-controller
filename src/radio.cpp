@@ -1,6 +1,5 @@
 #include "radio.h"
-#include "datatypes.h"
-#include "packet.h"
+#include "vesc.h"
 #include <Arduino.h>
 #include <BLEDevice.h>
 #include <array>
@@ -37,6 +36,8 @@ QueueHandle_t rxPackets;
 QueueHandle_t txPackets;
 BLEState bleState;
 
+vesc::controller controller;
+
 static vesc::buffer<vesc::PACKET_MAX_PL_LEN> rx_buffer;
 
 // Function prototypes
@@ -44,6 +45,44 @@ void ble_init();
 void ble_reset();
 void ble_scanning();
 
+// Scan for BLE servers and find the first one that advertises the Nordic UART service.
+class AdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
+  /**
+      Called for each advertising BLE server.
+  */
+  void onResult(BLEAdvertisedDevice advertisedDevice) {
+
+    // We have found a device, check to see if it contains the Nordic UART service.
+    if (advertisedDevice.haveServiceUUID()) {
+      Serial.println("Checking serviceid: ");
+      Serial.printf("ID: %s\n", advertisedDevice.toString().c_str());
+      // Devices can have multiple service UUIDs
+      for (auto i = 0ul; i < advertisedDevice.getServiceUUIDCount(); i++) {
+        // Should check the name as well to make sure that this is an appropriate device
+        if (advertisedDevice.getServiceUUID(i).equals(serviceUUID)) {
+          Serial.print("BLE Advertised Device found - ");
+          Serial.println(advertisedDevice.toString().c_str());
+
+          Serial.println("Found a device with the desired ServiceUUID!");
+          advertisedDevice.getScan()->stop();
+
+          // Use reset in case we are calling this again
+          Serial.println("Reseting the server address");
+          pServerAddress.reset(new BLEAddress(advertisedDevice.getAddress()));
+
+          // Unblock the task waiting for us to discover the proper device
+          Serial.println("Unblocking our scanning task");
+          xSemaphoreGive(xDoConnect);
+        }
+      }
+    }
+  }
+} xAdvertiseCallbacks;
+
+class ClientCallbacks : public BLEClientCallbacks {
+  void onConnect(BLEClient *client) {}
+  void onDisconnect(BLEClient *client) { bleState = BLEState::DISCONNECTED; }
+} xClientCallbacks;
 // This is the callback functions that gets data from the ble service, which in this case should be data that the vesc
 // sends back to us. Is this called in an ISR?
 
@@ -61,6 +100,17 @@ static void notifyCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic, ui
     Serial.print(" ");
   }
   Serial.println(" <<");
+
+  // Parse the packet
+  vesc::packet p;
+  p.data().append(pData, length);
+
+  auto res = controller.parse_command(p);
+  if (res == vesc::packet::VALIDATE_RESULT::VALID) {
+    Serial.println(" We have a valid packet! ");
+  } else {
+    Serial.printf("Bad packet: %i\n", static_cast<unsigned int>(res));
+  }
 }
 
 // Returns a reference to the newly created client that is connected to the server
@@ -117,40 +167,6 @@ std::unique_ptr<BLEClient> connectToServer(BLEAddress pAddress) {
   return client;
 }
 
-// Scan for BLE servers and find the first one that advertises the Nordic UART service.
-class AdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
-  /**
-      Called for each advertising BLE server.
-  */
-  void onResult(BLEAdvertisedDevice advertisedDevice) {
-
-    // We have found a device, check to see if it contains the Nordic UART service.
-    if (advertisedDevice.haveServiceUUID()) {
-      Serial.println("Checking serviceid: ");
-      Serial.printf("ID: %s\n", advertisedDevice.toString().c_str());
-      // Devices can have multiple service UUIDs
-      for (auto i = 0ul; i < advertisedDevice.getServiceUUIDCount(); i++) {
-        // Should check the name as well to make sure that this is an appropriate device
-        if (advertisedDevice.getServiceUUID(i).equals(serviceUUID)) {
-          Serial.print("BLE Advertised Device found - ");
-          Serial.println(advertisedDevice.toString().c_str());
-
-          Serial.println("Found a device with the desired ServiceUUID!");
-          advertisedDevice.getScan()->stop();
-
-          // Use reset in case we are calling this again
-          Serial.println("Reseting the server address");
-          pServerAddress.reset(new BLEAddress(advertisedDevice.getAddress()));
-
-          // Unblock the task waiting for us to discover the proper device
-          Serial.println("Unblocking our scanning task");
-          xSemaphoreGive(xDoConnect);
-        }
-      }
-    }
-  }
-} xCallbacks;
-
 void ble_init() {
   // Initialize our state machine
   bleState = BLEState::INIT;
@@ -169,7 +185,7 @@ void ble_init() {
   // Signleton object, don't delete
   BLEScan *pBLEScan = BLEDevice::getScan();
   // Set our callbacks for the scan
-  pBLEScan->setAdvertisedDeviceCallbacks(&xCallbacks);
+  pBLEScan->setAdvertisedDeviceCallbacks(&xAdvertiseCallbacks);
   // Set state right before starting scan to avoid race condition
   bleState = BLEState::SCANNING;
   pBLEScan->setActiveScan(true);
@@ -197,9 +213,13 @@ void ble_scanning() {
 
 void ble_found_device() {
   static std::unique_ptr<BLEClient> pClient{};
+
   Serial.printf("Connecting to server: %s\n", pServerAddress->toString().c_str());
   // Reset our client to the new one
   pClient = connectToServer(*pServerAddress);
+
+  Serial.println("Setting client callbacks");
+  pClient->setClientCallbacks(&xClientCallbacks);
   if (pClient) {
     bleState = BLEState::CONNECTED;
     Serial.println("We are now connected to the BLE Server");
@@ -226,8 +246,11 @@ void ble_get_device_info() {
 
 void ble_reset() {
   // Give things a second
+  Serial.println("About to reset BT");
   vTaskDelay(1000u / portTICK_PERIOD_MS);
+  Serial.println("BLEDevice::deinit >>");
   BLEDevice::deinit();
+  Serial.println("BLEDevice::deinit <<");
   ble_init();
 }
 
@@ -247,6 +270,10 @@ void radio_run() {
   case BLEState::READING_DEVICE_INFO: ble_get_device_info(); break;
   // Not sure if we need this state
   case BLEState::PAIRED: break;
+  case BLEState::DISCONNECTED:
+    Serial.println("BLE Client Disconnected");
+    vTaskDelay(1000u / portTICK_RATE_MS);
+    break;
   default:
     // Should reset radio and reconnect?
     // Check if connection is still valid. If we disconnected, reset!

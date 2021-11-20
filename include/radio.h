@@ -1,15 +1,19 @@
 #pragma once
 
+#include "vesc.h"
+
 enum class BLEState {
   INIT,
   SCANNING,
   FOUND_DEVICE,
   CONNECTED,
   READING_DEVICE_INFO,
-  PAIRED
+  PAIRED,
+  DISCONNECTED
 };
 
 extern BLEState bleState;
+extern vesc::controller controller;
 
 void radio_init();
 void radio_run();

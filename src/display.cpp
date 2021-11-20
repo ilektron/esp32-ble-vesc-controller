@@ -5,12 +5,14 @@
 #include "radio.h"
 
 constexpr uint16_t JOY_SIZE = 24;
+constexpr uint16_t BLE_SIZE = 24;
 constexpr uint16_t BATTERY_WIDTH = 16;
 constexpr uint16_t BATTERY_HEIGHT = 8;
 
 static TFT_eSPI tft = TFT_eSPI(TFT_WIDTH, TFT_HEIGHT); // Invoke custom library
 static TFT_eSprite joy = TFT_eSprite(&tft);
 static TFT_eSprite battery = TFT_eSprite(&tft);
+static TFT_eSprite ble = TFT_eSprite(&tft);
 
 void TFT_sleep() {
   Serial.println("Setting TFT (again) to deep-sleep ");
@@ -78,9 +80,30 @@ void draw_battery(float battery_voltage) {
 
 void draw_ble_state() {
 
+  static int animator{};
+
+  animator = animator >= BLE_SIZE ? 0 : animator + 1;
+
+  ble.fillSprite(TFT_BLACK);
+
   switch (bleState) {
-  case BLEState::INIT: break;
+  case BLEState::INIT: ble.drawCircle(BLE_SIZE / 2, BLE_SIZE / 2, BLE_SIZE / 2 - 1, TFT_BLUE); break;
+  case BLEState::SCANNING: ble.drawCircle(BLE_SIZE / 2, BLE_SIZE / 2, animator / 2 - 1, TFT_BLUE); break;
+  case BLEState::FOUND_DEVICE:
+    ble.drawCircle(BLE_SIZE / 2, BLE_SIZE / 2, BLE_SIZE - animator / 2 - 1, TFT_GREENYELLOW);
+    break;
+  case BLEState::CONNECTED: ble.drawCircle(BLE_SIZE / 2, BLE_SIZE / 2, BLE_SIZE - animator / 2 - 1, TFT_GREEN); break;
+  case BLEState::READING_DEVICE_INFO: ble.drawCircle(BLE_SIZE / 2, BLE_SIZE / 2, animator / 2 - 1, TFT_CYAN); break;
+  default: ble.fillCircle(BLE_SIZE / 2, BLE_SIZE / 2, BLE_SIZE / 2 - 1, TFT_RED); break;
   }
+
+  ble.pushSprite((TFT_WIDTH - BLE_SIZE) / 2, 0);
+}
+
+void draw_controller_state(const vesc::controller &controller) {
+  const auto hw = "Connected to: " + controller.getHW();
+
+  if (hw.length()) { tft.drawString(hw.c_str(), 0, 32); }
 }
 
 void init_tft() {
@@ -90,7 +113,7 @@ void init_tft() {
   tft.setTextSize(2);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   tft.setCursor(0, 0);
-  tft.setTextDatum(MC_DATUM);
+  tft.setTextDatum(TL_DATUM);
   tft.setTextSize(1);
 
   joy.createSprite(JOY_SIZE, JOY_SIZE);
@@ -99,6 +122,9 @@ void init_tft() {
 
   battery.createSprite(BATTERY_WIDTH, BATTERY_HEIGHT);
   battery.fillSprite(TFT_BLACK);
+
+  ble.createSprite(BLE_SIZE, BLE_SIZE);
+  ble.fillSprite(TFT_BLACK);
 
   if (TFT_BL > 0) {          // TFT_BL has been set in the TFT_eSPI library in the User Setup file TTGO_T_Display.h
     pinMode(TFT_BL, OUTPUT); // Set backlight pin to output mode
@@ -109,6 +135,6 @@ void init_tft() {
   tft.setSwapBytes(true);
   tft.setRotation(3);
   tft.pushImage(0, 0, TFT_HEIGHT, TFT_WIDTH, steveplusplus);
-  vTaskDelay(5000 / portTICK_PERIOD_MS);
+  vTaskDelay(500 / portTICK_PERIOD_MS);
   tft.fillScreen(TFT_BLACK);
 }

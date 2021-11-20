@@ -1,3 +1,4 @@
+#include "datatypes.h"
 #include "packet.h"
 #include <sstream>
 #include <string>
@@ -83,7 +84,7 @@ void test_buffer_append_float() {
   auto f = -3.2435234;
   p.append(f);
   TEST_ASSERT_EQUAL(4, p.len());
-  auto i = p.get();
+  auto i = p.getf();
   TEST_ASSERT_EQUAL_FLOAT(f, i);
 }
 
@@ -118,11 +119,11 @@ void test_buffer_append_multiple_types() {
   TEST_ASSERT_EQUAL(1, p.get<uint32_t>());
   TEST_ASSERT_EQUAL(0, p.get<int32_t>());
   TEST_ASSERT_EQUAL(-23984, p.get<int16_t>());
-  TEST_ASSERT_EQUAL_FLOAT(3.1415926f, p.get());
+  TEST_ASSERT_EQUAL_FLOAT(3.1415926f, p.getf());
   TEST_ASSERT_EQUAL('\0', p.get<int8_t>());
   TEST_ASSERT_EQUAL('a', p.get<int8_t>());
   TEST_ASSERT_EQUAL('!', p.get<uint8_t>());
-  TEST_ASSERT_EQUAL_FLOAT(23984.0f, p.get());
+  TEST_ASSERT_EQUAL_FLOAT(23984.0f, p.getf());
   TEST_ASSERT_EQUAL(0x112233, p.get<int32_t>());
 }
 
@@ -172,6 +173,28 @@ void test_buffer_initializer_list() {
   TEST_ASSERT_EQUAL('!', p.get<uint8_t>());
 }
 
+void test_buffer_reload() {
+  vesc::buffer<30> b = {0x2,  0x19, 0x0,  0x5,  0x2,  0x55, 0x4e, 0x49, 0x54, 0x59, 0x0, 0x23, 0x0,  0x1d, 0x0,
+                        0x17, 0x47, 0x39, 0x34, 0x35, 0x38, 0x34, 0x38, 0x0,  0x0,  0x0, 0x0,  0x5b, 0x23, 0x3};
+
+  b.get<uint32_t>();
+  b.get<uint32_t>();
+  b.reload();
+
+  TEST_ASSERT_EQUAL(30, b.len());
+  TEST_ASSERT_EQUAL(0x2, b.get<uint8_t>());
+  TEST_ASSERT_EQUAL(0x19, b.get<uint8_t>());
+  TEST_ASSERT_EQUAL(0x0, b.get<uint8_t>());
+  TEST_ASSERT_EQUAL(0x5, b.get<uint8_t>());
+  TEST_ASSERT_EQUAL(0x2, b.get<uint8_t>());
+  b.reload();
+
+  b.advance(0x2);
+  TEST_ASSERT_EQUAL(0x0, b.get<uint8_t>());
+  TEST_ASSERT_EQUAL(0x5, b.get<uint8_t>());
+  TEST_ASSERT_EQUAL(0x2, b.get<uint8_t>());
+}
+
 void test_packet_from_buffer() {
   vesc::buffer<6> p1 = {'H', 'e', 'l', 'l', 'o', '!'};
 
@@ -217,6 +240,41 @@ void test_simple_packet() {
   }
 }
 
+void test_packet_bad_start() {
+  vesc::packet pack;
+  pack.data() = {0x04, 0x01, 0x00, 0x00, 0x00, 0x03};
+
+  TEST_ASSERT_EQUAL(vesc::packet::VALIDATE_RESULT::BAD_START, pack.validate());
+}
+
+void test_packet_bad_end() {
+  vesc::packet pack;
+  pack.data() = {0x02, 0x01, 0x00, 0x00, 0x00, 0xFF};
+
+  TEST_ASSERT_EQUAL(vesc::packet::VALIDATE_RESULT::BAD_END, pack.validate());
+}
+
+void test_packet_bad_crc() {
+
+  vesc::packet pack;
+  pack.data() = {0x2,  0x19, 0x0,  0x5,  0x2,  0x55, 0x4e, 0x49, 0x54, 0x59, 0x0, 0x23, 0x0,  0x1d, 0x0,
+                 0x17, 0x47, 0x39, 0x34, 0x35, 0x38, 0x34, 0x38, 0x0,  0x0,  0x0, 0x0,  0x5b, 0x24, 0x3};
+  TEST_ASSERT_EQUAL(vesc::packet::VALIDATE_RESULT::INVALID_CRC, pack.validate());
+}
+
+void test_fw_packet() {
+  vesc::packet pack;
+  pack.data() = {0x2,  0x19, 0x0,  0x5,  0x2,  0x55, 0x4e, 0x49, 0x54, 0x59, 0x0, 0x23, 0x0,  0x1d, 0x0,
+                 0x17, 0x47, 0x39, 0x34, 0x35, 0x38, 0x34, 0x38, 0x0,  0x0,  0x0, 0x0,  0x5b, 0x23, 0x3};
+
+  TEST_ASSERT_EQUAL(vesc::packet::VALIDATE_RESULT::VALID, pack.validate());
+  TEST_ASSERT_EQUAL(COMM_FW_VERSION, pack.data().get<uint8_t>());
+  TEST_ASSERT_EQUAL(0x05, pack.data().get<uint8_t>());
+  TEST_ASSERT_EQUAL(0x02, pack.data().get<uint8_t>());
+  TEST_ASSERT_EQUAL_STRING("UNITY", pack.data().get_string().c_str());
+  TEST_ASSERT_EQUAL(0x23, pack.data().get<uint8_t>());
+}
+
 int main(int argc, char *argv[]) {
   UNITY_BEGIN();
 
@@ -233,10 +291,15 @@ int main(int argc, char *argv[]) {
   RUN_TEST(test_buffer_append_buffer);
   RUN_TEST(test_buffer_copy_buffer);
   RUN_TEST(test_buffer_initializer_list);
+  RUN_TEST(test_buffer_reload);
   RUN_TEST(test_byte_order);
 
   RUN_TEST(test_packet_from_buffer);
   RUN_TEST(test_simple_packet);
+  RUN_TEST(test_packet_bad_start);
+  RUN_TEST(test_packet_bad_end);
+  RUN_TEST(test_packet_bad_crc);
+  RUN_TEST(test_fw_packet);
   UNITY_END();
   return 0;
 }
