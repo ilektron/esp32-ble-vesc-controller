@@ -103,7 +103,23 @@ void draw_ble_state() {
 void draw_controller_state(const vesc::controller &controller) {
   const auto hw = "Connected to: " + controller.getHW();
 
-  if (hw.length()) { tft.drawString(hw.c_str(), 0, 32); }
+  auto line = 32ul;
+  constexpr auto lh = 12u;
+  if (hw.length()) { tft.drawString(hw.c_str(), 0, line); line += lh; }
+
+  std::array<char, 100> s;
+  auto values = controller.values();
+  sprintf(s.data(), "Vin:\t%4.1f", values.v_in);
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "current:\t%4.1f", values.current_in);
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "rpm:\t%10.1f", values.rpm);
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "ah:\t%4.1f", values.amp_hours);
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "fault:\t%4i", values.fault_code);
+  tft.drawString(s.data(), 0, line); line += lh;
+
 }
 
 void init_tft() {

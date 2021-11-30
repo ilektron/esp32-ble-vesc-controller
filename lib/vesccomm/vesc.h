@@ -5,9 +5,13 @@
 #include "packet.h"
 
 #include <Arduino.h>
+#include <bitset>
 #include <stdint.h>
 
 namespace vesc {
+
+namespace mc_value {};
+
 struct fw_params {
   uint8_t major;
   uint8_t minor;
@@ -22,6 +26,33 @@ struct fw_params {
 
   // TODO How do we know if this firmware is loaded
 };
+
+// Could use with bitset and have just the bit number instead?
+// Typed enumes make for ugly conversions
+// These are used when requesting data from the vesc and are combined into a bitmask
+namespace values {
+constexpr const uint32_t TEMP_MOS = 1u << 0;
+constexpr const uint32_t TEMP_MOTOR = 1u << 1;
+constexpr const uint32_t CURRENT_MOTOR = 1u << 2;
+constexpr const uint32_t CURRENT_IN = 1u << 3;
+constexpr const uint32_t ID = 1u << 4;
+constexpr const uint32_t IQ = 1u << 5;
+constexpr const uint32_t DUTY_NOW = 1u << 6;
+constexpr const uint32_t RPM = 1u << 7;
+constexpr const uint32_t V_IN = 1u << 8;
+constexpr const uint32_t AMP_HOURS = 1u << 9;
+constexpr const uint32_t AMP_HOURS_CHARGED = 1u << 10;
+constexpr const uint32_t WATT_HOURS = 1u << 11;
+constexpr const uint32_t WATT_HOURS_CHARGED = 1u << 12;
+constexpr const uint32_t TACHOMETER = 1u << 13;
+constexpr const uint32_t TACHOMETER_ABS = 1u << 14;
+constexpr const uint32_t FAULT_CODE = 1u << 15;
+constexpr const uint32_t POSITION = 1u << 16;
+constexpr const uint32_t VESC_ID = 1u << 17;
+constexpr const uint32_t TEMP_MOSX = 1u << 18;
+constexpr const uint32_t VD = 1u << 19;
+constexpr const uint32_t VQ = 1u << 20;
+}; // namespace values
 
 struct mc_values {
   float v_in;
@@ -63,11 +94,21 @@ public:
     auto res = p.validate();
     if (res == packet::VALIDATE_RESULT::VALID) {
       auto type = p.data().get<uint8_t>();
+
       switch (type) {
-      case COMM_FW_VERSION: handleFw(p); break;
+      case COMM_FW_VERSION: handleFw(p, _fw); break;
       case COMM_GET_VALUES: handleGetValues(p); break;
       case COMM_GET_VALUES_SELECTIVE: handleGetValuesSelective(p, p.data().get<uint8_t>()); break;
       default: Serial.printf("Unhandled packet type: %i\n", type);
+      }
+
+      // Call any custom callbacks for this packet type
+      auto callback = _callbacks.find(type);
+      if (callback != _callbacks.end()) {
+        // Call the callback that was assigned to this packet type
+        // Maybe shouldn't be a map, could want multiple callbacks?
+        // Could possibly just make an array of 256 values since we know that will be the max.
+        callback->second(p);
       }
     }
     return res;
@@ -79,68 +120,103 @@ public:
   bool isTestFW() const { return _fw.isTestFW; }
   int type() const { return _fw.hwType; }
 
+  float getVoltage() const { return _mc_values.v_in; }
+
+  const mc_values &values() const { return _mc_values; }
+
+  bool setCallback(uint8_t packet_type, std::function<void(packet &p)> f) {
+    _callbacks[packet_type] = f;
+    return true;
+  }
+
+  void clearCallback(uint8_t packet_type) { _callbacks.erase(packet_type); }
+
+  void setTX(std::function<void(const uint8_t *data, std::size_t len)> tx) { _tx = tx; }
+
+  // Set the current for a motor
+  bool setCurrent(float current, int id = -1) {
+
+    if (_tx) {
+
+      _tx(nullptr, 0);
+    } else {
+      return false;
+    }
+  }
+  bool setCurrents(float c1, float c2) {}
+
+  bool setRPM(float current, int id = -1) {}
+
+  // Ping all address to see which devices are connected
+  void scanCAN() {}
+
 private:
   fw_params _fw;
   mc_values _mc_values;
   std::map<uint8_t, std::function<void(packet &p)>> _callbacks;
+  std::function<void(const uint8_t *data, std::size_t len)> _tx;
+  std::function<void(const uint8_t *data, std::size_t len)> _rx;
 
-  void handleFw(packet &p) {
+  void handleFw(packet &p, fw_params &out) {
     auto &buf = p.data();
     if (buf.len() > 2u) {
-      _fw.major = buf.get<uint8_t>();
-      _fw.minor = buf.get<uint8_t>();
-      _fw.hw = buf.get_string();
+      out.major = buf.get<uint8_t>();
+      out.minor = buf.get<uint8_t>();
+      out.hw = buf.get_string();
     }
 
     if (buf.len() > 12u) {
+      out.uuid.clear();
       for (auto i = 0u; i < 12; i++) {
-        _fw.uuid.push_back(buf.get<int8_t>());
+        out.uuid.push_back(buf.get<int8_t>());
       }
     }
 
-    if (buf.len() > 1u) { _fw.isPaired = buf.get<uint8_t>(); }
-    if (buf.len() > 1u) { _fw.isTestFW = buf.get<uint8_t>(); }
-    if (buf.len() > 1u) { _fw.hwType = buf.get<uint8_t>(); }
-    if (buf.len() > 1u) { _fw.customConfigNum = buf.get<uint8_t>(); }
+    if (buf.len() > 1u) { out.isPaired = buf.get<uint8_t>(); }
+    if (buf.len() > 1u) { out.isTestFW = buf.get<uint8_t>(); }
+    if (buf.len() > 1u) { out.hwType = buf.get<uint8_t>(); }
+    if (buf.len() > 1u) { out.customConfigNum = buf.get<uint8_t>(); }
   }
 
   void handleGetValues(packet &p) { handleGetValuesSelective(p, 0xFFFFFFFF); }
 
+  // TODO: Change to use std::bitset and define these shifted values
   void handleGetValuesSelective(packet &p, uint32_t mask) {
 
+    std::bitset<32> m(mask);
     auto &buf = p.data();
     // mask locations
-    if (mask & (1ul << 0)) { _mc_values.temp_mos = buf.getfp(2, 10.0f); }
-    if (mask & (1ul << 1)) { _mc_values.temp_motor = buf.getfp(2, 10.0f); }
-    if (mask & (1ul << 2)) { _mc_values.current_motor = buf.getfp(4, 100.0f); }
-    if (mask & (1ul << 3)) { _mc_values.current_in = buf.getfp(4, 100.0f); }
-    if (mask & (1ul << 4)) { _mc_values.id = buf.getfp(4, 100.0f); }
-    if (mask & (1ul << 5)) { _mc_values.iq = buf.getfp(4, 100.0f); }
-    if (mask & (1ul << 6)) { _mc_values.duty_now = buf.getfp(2, 1000.0f); }
-    if (mask & (1ul << 7)) { _mc_values.rpm = buf.getfp(4, 1.0f); }
-    if (mask & (1ul << 8)) { _mc_values.v_in = buf.getfp(2, 10.0f); }
-    if (mask & (1ul << 9)) { _mc_values.amp_hours = buf.getfp(4, 10000.0f); }
-    if (mask & (1ul << 10)) { _mc_values.amp_hours_charged = buf.getfp(4, 10000.0f); }
-    if (mask & (1ul << 11)) { _mc_values.watt_hours = buf.getfp(4, 10000.0f); }
-    if (mask & (1ul << 12)) { _mc_values.watt_hours_charged = buf.getfp(4, 10000.0f); }
-    if (mask & (1ul << 13)) { _mc_values.tachometer = buf.get<int32_t>(); }
-    if (mask & (1ul << 14)) { _mc_values.tachometer_abs = buf.get<int32_t>(); }
-    if (mask & (1ul << 15)) { _mc_values.fault_code = mc_fault_code(buf.get<uint8_t>()); }
+    if (mask & values::TEMP_MOS) { _mc_values.temp_mos = buf.getfp(2, 10.0f); }
+    if (mask & values::TEMP_MOTOR) { _mc_values.temp_motor = buf.getfp(2, 10.0f); }
+    if (mask & values::CURRENT_MOTOR) { _mc_values.current_motor = buf.getfp(4, 100.0f); }
+    if (mask & values::CURRENT_IN) { _mc_values.current_in = buf.getfp(4, 100.0f); }
+    if (mask & values::ID) { _mc_values.id = buf.getfp(4, 100.0f); }
+    if (mask & values::IQ) { _mc_values.iq = buf.getfp(4, 100.0f); }
+    if (mask & values::DUTY_NOW) { _mc_values.duty_now = buf.getfp(2, 1000.0f); }
+    if (mask & values::RPM) { _mc_values.rpm = buf.getfp(4, 1.0f); }
+    if (mask & values::V_IN) { _mc_values.v_in = buf.getfp(2, 10.0f); }
+    if (mask & values::AMP_HOURS) { _mc_values.amp_hours = buf.getfp(4, 10000.0f); }
+    if (mask & values::AMP_HOURS_CHARGED) { _mc_values.amp_hours_charged = buf.getfp(4, 10000.0f); }
+    if (mask & values::WATT_HOURS) { _mc_values.watt_hours = buf.getfp(4, 10000.0f); }
+    if (mask & values::WATT_HOURS_CHARGED) { _mc_values.watt_hours_charged = buf.getfp(4, 10000.0f); }
+    if (mask & values::TACHOMETER) { _mc_values.tachometer = buf.get<int32_t>(); }
+    if (mask & values::TACHOMETER_ABS) { _mc_values.tachometer_abs = buf.get<int32_t>(); }
+    if (mask & values::FAULT_CODE) { _mc_values.fault_code = mc_fault_code(buf.get<uint8_t>()); }
 
     if (buf.len() >= 4) {
-      if (mask & (1ul << 16)) { _mc_values.position = buf.getfp(4, 1000000.0f); }
+      if (mask & values::POSITION) { _mc_values.position = buf.getfp(4, 1000000.0f); }
     } else {
       _mc_values.position = -1.0;
     }
 
     if (buf.len() >= 1) {
-      if (mask & (1ul << 17)) { _mc_values.vesc_id = buf.get<uint8_t>(); }
+      if (mask & values::VESC_ID) { _mc_values.vesc_id = buf.get<uint8_t>(); }
     } else {
       _mc_values.vesc_id = 255u;
     }
 
     if (buf.len() >= 6) {
-      if (mask & (1ul << 18)) {
+      if (mask & values::TEMP_MOSX) {
         _mc_values.temp_mos1 = buf.getfp(2, 10.0f);
         _mc_values.temp_mos2 = buf.getfp(2, 10.0f);
         _mc_values.temp_mos3 = buf.getfp(2, 10.0f);
@@ -148,8 +224,8 @@ private:
     }
 
     if (buf.len() >= 8) {
-      if (mask & (1ul << 19)) { _mc_values.vd = buf.getfp(4, 1000.0f); }
-      if (mask & (1ul << 20)) { _mc_values.vq = buf.getfp(4, 1000.0f); }
+      if (mask & values::VD) { _mc_values.vd = buf.getfp(4, 1000.0f); }
+      if (mask & values::VQ) { _mc_values.vq = buf.getfp(4, 1000.0f); }
     }
   }
 };

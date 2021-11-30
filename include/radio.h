@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vesc.h"
+#include "joystick.h"
 
 enum class BLEState {
   INIT,
@@ -16,4 +17,4 @@ extern BLEState bleState;
 extern vesc::controller controller;
 
 void radio_init();
-void radio_run();
+void radio_run(Joystick& j);

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <BLEDevice.h>
 #include <array>
+#include <cmath>
 #include <memory>
 
 // The remote Nordic UART service service we wish to connect to.
@@ -28,9 +29,6 @@ static BLERemoteCharacteristic *pRXCharacteristic;
 
 // Our buffer for sending and receiving packets
 constexpr const auto PACKET_QUEUE_SIZE = 5u;
-
-static vesc::buffer<1u> fwp = {COMM_FW_VERSION};
-static vesc::packet fwpacket(fwp);
 
 QueueHandle_t rxPackets;
 QueueHandle_t txPackets;
@@ -237,11 +235,67 @@ void ble_connected() {
 }
 
 void ble_get_device_info() {
+  static vesc::buffer<1u> fwp = {COMM_FW_VERSION};
+  static vesc::packet fwpacket(fwp);
+
+  controller.setCallback(COMM_FW_VERSION, [&](vesc::packet &p) {
+    bleState = BLEState::PAIRED;
+    Serial.println("Successfully read device info");
+  });
   // TODO: Block for reply using semaphore. Release semaphore if not the reply that we're waiting for
   Serial.printf("Constructed packet, sending fw version request len:%i\n", fwpacket.len());
-  pRXCharacteristic->writeValue(static_cast<uint8_t *>(fwpacket), fwpacket.len(), true);
-  Serial.println("Should block here for reply");
+  pRXCharacteristic->writeValue(fwpacket, fwpacket.len(), true);
+
+  // TODO: Should block and verify device information before continuing
+
   vTaskDelay(1000u / portTICK_PERIOD_MS);
+}
+
+void ble_paired(Joystick &j) {
+  static vesc::buffer<1u> vp = {COMM_GET_VALUES};
+  static vesc::packet vpacket(vp);
+
+  static auto cb = controller.setCallback(COMM_GET_VALUES, [&](vesc::packet &p) { Serial.println("+"); });
+
+  if (cb) {
+    // Read data from the controller for voltage and current
+    pRXCharacteristic->writeValue(vpacket, vpacket.len(), true);
+
+    vTaskDelay(10u / portTICK_PERIOD_MS);
+
+    // Control the motors
+    auto x = j.x();
+    auto y = j.y();
+    // Clip any bad controls
+    if (abs(x) < 0.1f || abs(x) > 1.01f) { x = 0.0f; }
+    if (abs(y) < 0.1f || abs(y) > 1.01f) { y = 0.0f; }
+
+    constexpr auto scale = 1000.0f * 10.0f;
+    x *= scale;
+    y *= scale;
+
+    float m1c = y - x;
+    float m2c = y + x;
+    vesc::buffer<5u> motor1p;
+    vesc::buffer<7u> motor2p;
+
+    Serial.printf("Setting motors to: %10.2f,\t%10.2f\n", m1c, m2c);
+
+    // Need to figure out the ID of the dual vesc setup
+    motor1p.append<uint8_t>(COMM_SET_CURRENT);
+    motor1p.append<int32_t>(m1c);
+    vesc::packet motor1packet(motor1p);
+    pRXCharacteristic->writeValue(motor1packet, motor1packet.len(), false);
+
+    motor2p.append<uint8_t>(COMM_FORWARD_CAN);
+    motor2p.append<uint8_t>(95);
+    motor2p.append<uint8_t>(COMM_SET_CURRENT);
+    motor2p.append<int32_t>(m2c);
+    vesc::packet motor2packet(motor2p);
+    pRXCharacteristic->writeValue(motor2packet, motor2packet.len(), false);
+
+    vTaskDelay(10u / portTICK_PERIOD_MS);
+  }
 }
 
 void ble_reset() {
@@ -260,7 +314,7 @@ void radio_init() {
   vTaskDelay(300 / portTICK_PERIOD_MS);
 }
 
-void radio_run() {
+void radio_run(Joystick &j) {
 
   switch (bleState) {
   case BLEState::INIT: ble_init(); break;
@@ -269,7 +323,7 @@ void radio_run() {
   case BLEState::CONNECTED: ble_connected(); break;
   case BLEState::READING_DEVICE_INFO: ble_get_device_info(); break;
   // Not sure if we need this state
-  case BLEState::PAIRED: break;
+  case BLEState::PAIRED: ble_paired(j); break;
   case BLEState::DISCONNECTED:
     Serial.println("BLE Client Disconnected");
     vTaskDelay(1000u / portTICK_RATE_MS);
