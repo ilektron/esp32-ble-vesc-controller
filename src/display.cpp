@@ -94,6 +94,7 @@ void draw_ble_state() {
     break;
   case BLEState::CONNECTED: ble.drawCircle(BLE_SIZE / 2, BLE_SIZE / 2, BLE_SIZE - animator / 2 - 1, TFT_GREEN); break;
   case BLEState::READING_DEVICE_INFO: ble.drawCircle(BLE_SIZE / 2, BLE_SIZE / 2, animator / 2 - 1, TFT_CYAN); break;
+  case BLEState::PAIRED: ble.drawCircle(BLE_SIZE / 2, BLE_SIZE / 2, animator / 2 + 1, TFT_GREEN); break;
   default: ble.fillCircle(BLE_SIZE / 2, BLE_SIZE / 2, BLE_SIZE / 2 - 1, TFT_RED); break;
   }
 
@@ -109,6 +110,8 @@ void draw_controller_state(const vesc::controller &controller) {
 
   std::array<char, 100> s;
   auto values = controller.values();
+  sprintf(s.data(), "vescid:\t%i", values.vesc_id);
+  tft.drawString(s.data(), 0, line); line += lh;
   sprintf(s.data(), "Vin:\t%4.1f", values.v_in);
   tft.drawString(s.data(), 0, line); line += lh;
   sprintf(s.data(), "current:\t%4.1f", values.current_in);

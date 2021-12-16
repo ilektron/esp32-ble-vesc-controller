@@ -87,7 +87,8 @@ struct mc_values {
 class controller {
 
 public:
-  controller() = default;
+  // TODO change the second vesc id in order to read it
+  controller() : _fw{}, _mc_values{}, _secondVescId{95} {}
   ~controller() = default;
   // TODO return comm result
   packet::VALIDATE_RESULT parse_command(vesc::packet &p) {
@@ -131,21 +132,85 @@ public:
 
   void clearCallback(uint8_t packet_type) { _callbacks.erase(packet_type); }
 
-  void setTX(std::function<void(const uint8_t *data, std::size_t len)> tx) { _tx = tx; }
+  void setTX(std::function<void(uint8_t *data, std::size_t len, bool response)> tx) { _tx = tx; }
 
-  // Set the current for a motor
-  bool setCurrent(float current, int id = -1) {
-
+  // Get information from the controller
+  bool getValues(uint32_t mask = 0xFFFFFFFF) {
     if (_tx) {
-
-      _tx(nullptr, 0);
+      static vesc::buffer<1u> vp = {COMM_GET_VALUES};
+      static vesc::packet vpacket(vp);
+      _tx(vpacket, vpacket.len(), true);
     } else {
       return false;
     }
+    return true;
   }
-  bool setCurrents(float c1, float c2) {}
 
-  bool setRPM(float current, int id = -1) {}
+  // Set the current for a motor
+  bool setCurrent(float current, int id = -1) {
+    if (_tx) {
+      constexpr const auto scale = 1000.0f;
+      vesc::buffer<7u> payload;
+      if (id > 0) {
+        payload.append<uint8_t>(COMM_FORWARD_CAN);
+        payload.append<uint8_t>(id);
+      }
+
+      payload.append<uint8_t>(COMM_SET_CURRENT);
+      payload.append<int32_t>(current * scale);
+      vesc::packet p(payload);
+
+      _tx(p, p.len(), false);
+    } else {
+      return false;
+    }
+    return true;
+  }
+  bool setCurrents(float c1, float c2) { return setCurrent(c1) && setCurrent(c2, _secondVescId); }
+
+  bool setRPM(float rpm, int id = -1) {
+    if (_tx) {
+      constexpr const auto scale = 1.0f;
+      vesc::buffer<7u> payload;
+      if (id > 0) {
+        payload.append<uint8_t>(COMM_FORWARD_CAN);
+        payload.append<uint8_t>(id);
+      }
+
+      payload.append<uint8_t>(COMM_SET_RPM);
+      payload.append<int32_t>(rpm * scale);
+      vesc::packet p(payload);
+
+      _tx(p, p.len(), false);
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  bool setRPMs(float rpm1, float rpm2) { return setRPM(rpm1) && setRPM(rpm2, _secondVescId); }
+
+  bool setDuty(float duty, int id = -1) {
+    if (_tx) {
+      constexpr const auto scale = 1.0f;
+      vesc::buffer<7u> payload;
+      if (id > 0) {
+        payload.append<uint8_t>(COMM_FORWARD_CAN);
+        payload.append<uint8_t>(id);
+      }
+
+      payload.append<uint8_t>(COMM_SET_DUTY);
+      payload.append<int32_t>(duty * scale);
+      vesc::packet p(payload);
+
+      _tx(p, p.len(), false);
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  bool setDuties(float duty1, float duty2) { return setDuty(duty1) && setDuty(duty2, _secondVescId); }
 
   // Ping all address to see which devices are connected
   void scanCAN() {}
@@ -153,8 +218,9 @@ public:
 private:
   fw_params _fw;
   mc_values _mc_values;
+  uint8_t _secondVescId;
   std::map<uint8_t, std::function<void(packet &p)>> _callbacks;
-  std::function<void(const uint8_t *data, std::size_t len)> _tx;
+  std::function<void(uint8_t *data, std::size_t len, bool response)> _tx;
   std::function<void(const uint8_t *data, std::size_t len)> _rx;
 
   void handleFw(packet &p, fw_params &out) {

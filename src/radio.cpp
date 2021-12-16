@@ -160,6 +160,9 @@ std::unique_ptr<BLEClient> connectToServer(BLEAddress pAddress) {
     Serial.println(charUUID_RX.toString().c_str());
     return nullptr;
   }
+
+  controller.setTX(
+      [&](uint8_t *data, std::size_t len, bool response) { pRXCharacteristic->writeValue(data, len, response); });
   Serial.println(" - Remote BLE RX characteristic reference established");
 
   return client;
@@ -252,49 +255,36 @@ void ble_get_device_info() {
 }
 
 void ble_paired(Joystick &j) {
-  static vesc::buffer<1u> vp = {COMM_GET_VALUES};
-  static vesc::packet vpacket(vp);
 
   static auto cb = controller.setCallback(COMM_GET_VALUES, [&](vesc::packet &p) { Serial.println("+"); });
 
   if (cb) {
     // Read data from the controller for voltage and current
-    pRXCharacteristic->writeValue(vpacket, vpacket.len(), true);
 
-    vTaskDelay(10u / portTICK_PERIOD_MS);
+    // Read all the values.
+    // TODO: Change this to only retrieve what we need
+    controller.getValues();
+
+    vTaskDelay(20u / portTICK_PERIOD_MS);
 
     // Control the motors
     auto x = j.x();
     auto y = j.y();
     // Clip any bad controls
-    if (abs(x) < 0.1f || abs(x) > 1.01f) { x = 0.0f; }
-    if (abs(y) < 0.1f || abs(y) > 1.01f) { y = 0.0f; }
+    constexpr auto low_cutoff = 0.03f;
+    if (abs(x) < low_cutoff || abs(x) > 1.01f) { x = 0.0f; }
+    if (abs(y) < low_cutoff || abs(y) > 1.01f) { y = 0.0f; }
 
-    constexpr auto scale = 1000.0f * 10.0f;
-    x *= scale;
-    y *= scale;
+    float m1 = y - x;
+    float m2 = y + x;
 
-    float m1c = y - x;
-    float m2c = y + x;
-    vesc::buffer<5u> motor1p;
-    vesc::buffer<7u> motor2p;
+    Serial.printf("Setting motors to: %10.2f,\t%10.2f\n", m1, m2);
 
-    Serial.printf("Setting motors to: %10.2f,\t%10.2f\n", m1c, m2c);
-
-    // Need to figure out the ID of the dual vesc setup
-    motor1p.append<uint8_t>(COMM_SET_CURRENT);
-    motor1p.append<int32_t>(m1c);
-    vesc::packet motor1packet(motor1p);
-    pRXCharacteristic->writeValue(motor1packet, motor1packet.len(), false);
-
-    motor2p.append<uint8_t>(COMM_FORWARD_CAN);
-    motor2p.append<uint8_t>(95);
-    motor2p.append<uint8_t>(COMM_SET_CURRENT);
-    motor2p.append<int32_t>(m2c);
-    vesc::packet motor2packet(motor2p);
-    pRXCharacteristic->writeValue(motor2packet, motor2packet.len(), false);
-
-    vTaskDelay(10u / portTICK_PERIOD_MS);
+    // constexpr auto current_scale = 1000.0f * 10.0f;
+    // controller.setCurrents(current_scale * m1, current_scale * m2);
+    constexpr auto duty_scale = 100000.0f;
+    controller.setDuties(duty_scale * m1, duty_scale * m2);
+    vTaskDelay(20u / portTICK_PERIOD_MS);
   }
 }
 
@@ -305,6 +295,7 @@ void ble_reset() {
   Serial.println("BLEDevice::deinit >>");
   BLEDevice::deinit();
   Serial.println("BLEDevice::deinit <<");
+  controller.setTX(nullptr);
   ble_init();
 }
 
@@ -327,10 +318,12 @@ void radio_run(Joystick &j) {
   case BLEState::DISCONNECTED:
     Serial.println("BLE Client Disconnected");
     vTaskDelay(1000u / portTICK_RATE_MS);
+    ble_reset();
     break;
   default:
     // Should reset radio and reconnect?
     // Check if connection is still valid. If we disconnected, reset!
+    Serial.println("In a weird state");
     break;
   }
   // Serial.print("Running radio"); probably don't want to do this if we hope for low latency and are running often to
