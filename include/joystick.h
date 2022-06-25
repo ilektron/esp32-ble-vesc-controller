@@ -5,7 +5,7 @@ class Joystick {
 		Joystick() = default;
 		~Joystick() = default;
 
-    void set_zeros(int x, int y) { _zx = x; _zy = y; }
+		void set_zeros(int x, int y) { _zx = x; _zy = y; }
 		int get_zero_x() { return _zx; }
 		int get_zero_y() { return _zy; }
 

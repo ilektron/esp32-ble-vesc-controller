@@ -268,8 +268,8 @@ void ble_paired(Joystick &j) {
     vTaskDelay(20u / portTICK_PERIOD_MS);
 
     // Control the motors
-    auto x = j.x();
-    auto y = j.y();
+    auto x = -j.x();
+    auto y = -j.y();
     // Clip any bad controls
     constexpr auto low_cutoff = 0.03f;
     if (abs(x) < low_cutoff || abs(x) > 1.01f) { x = 0.0f; }
