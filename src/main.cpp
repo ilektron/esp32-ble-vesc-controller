@@ -15,6 +15,7 @@
 #include <BluetoothSerial.h>
 #include <Button2.h>
 #include <array>
+#include <Adafruit_ADS1X15.h>
 
 #define ADC_EN 14 // ADC_EN is the ADC detection enable port
 #define ADC_VIN_PIN 34
@@ -46,7 +47,7 @@ void setup() {
   rtc_wdt_protect_off();
   rtc_wdt_disable();
   // initialize serial communication at 115200 bits per second:
-  Serial.begin(1000000);
+  Serial.begin(500000);
   Serial.println("Start");
 
   // Deep sleep code
@@ -117,6 +118,12 @@ void TaskButton(void *pvParameters) // This is a task.
 void TaskAnalogReadVin(void *pvParameters) // This is a task.
 {
   (void)pvParameters;
+
+
+  Adafruit_ADS1115 ads;
+  if (!ads.begin()) {
+    Serial.println("Failed to initialize ADS.");
+  }
   // Check of calibration
 
   /*
@@ -143,7 +150,7 @@ void TaskAnalogReadVin(void *pvParameters) // This is a task.
     Serial.println("Default Vref: 1100mV");
   }
 
-  constexpr auto xDelay = 30u / portTICK_PERIOD_MS;
+  constexpr auto xDelay = 100u / portTICK_PERIOD_MS;
 
   // Get zero levels for the joystick
   joystick.set_zeros(analogRead(A4), analogRead(A5));
@@ -153,8 +160,23 @@ void TaskAnalogReadVin(void *pvParameters) // This is a task.
     battery_voltage = (static_cast<float>(v) / 4095.0f) * 2.0f * 3.3f * (vref / 1000.0f);
     joystick.set_pos(analogRead(A4), analogRead(A5));
     if (battery_voltage < 3.1f) {
-      Serial.println("Battery voltage low, entering sleep");
-      esp_deep_sleep_start();
+      // Serial.println("Battery voltage low, entering sleep");
+      // esp_deep_sleep_start();
+    }
+
+    {
+        int16_t adc0, adc1, adc2, adc3;
+        float volts0, volts1, volts2, volts3;
+
+        adc2 = ads.readADC_SingleEnded(2);
+        adc3 = ads.readADC_SingleEnded(3);
+
+        volts2 = ads.computeVolts(adc2);
+        volts3 = ads.computeVolts(adc3);
+
+        Serial.println("-------------");
+        Serial.print("AIN2: "); Serial.print(adc2); Serial.print("  "); Serial.print(volts2); Serial.println("V");
+        Serial.print("AIN3: "); Serial.print(adc3); Serial.print("  "); Serial.print(volts3); Serial.println("V");
     }
     vTaskDelay(xDelay); // one tick delay (15ms) in between reads for stability
   }

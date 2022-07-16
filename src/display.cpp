@@ -469,10 +469,13 @@ void init_tft() {
   tft.fillScreen(TFT_BLACK);
   */
 
+  Serial.println("Starting OLED");
  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println(F("SSD1306 allocation failed"));
     for(;;); // Don't proceed, loop forever
   }
+
+  Serial.println("Allocation succeeded");
 
   // Show initial display buffer contents on the screen --
   // the library initializes this with an Adafruit splash screen.
@@ -482,6 +485,7 @@ void init_tft() {
   // Clear the buffer
   display.clearDisplay();
 
+  Serial.println("Single Pixel");
   // Draw a single pixel in white
   display.drawPixel(10, 10, SSD1306_WHITE);
 

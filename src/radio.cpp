@@ -52,24 +52,24 @@ class AdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
 
     // We have found a device, check to see if it contains the Nordic UART service.
     if (advertisedDevice.haveServiceUUID()) {
-      Serial.println("Checking serviceid: ");
-      Serial.printf("ID: %s\n", advertisedDevice.toString().c_str());
+      // Serial.println("Checking serviceid: ");
+      // Serial.printf("ID: %s\n", advertisedDevice.toString().c_str());
       // Devices can have multiple service UUIDs
       for (auto i = 0ul; i < advertisedDevice.getServiceUUIDCount(); i++) {
         // Should check the name as well to make sure that this is an appropriate device
         if (advertisedDevice.getServiceUUID(i).equals(serviceUUID)) {
-          Serial.print("BLE Advertised Device found - ");
-          Serial.println(advertisedDevice.toString().c_str());
+          // Serial.print("BLE Advertised Device found - ");
+          // Serial.println(advertisedDevice.toString().c_str());
 
-          Serial.println("Found a device with the desired ServiceUUID!");
+          // Serial.println("Found a device with the desired ServiceUUID!");
           advertisedDevice.getScan()->stop();
 
           // Use reset in case we are calling this again
-          Serial.println("Reseting the server address");
+          // Serial.println("Reseting the server address");
           pServerAddress.reset(new BLEAddress(advertisedDevice.getAddress()));
 
           // Unblock the task waiting for us to discover the proper device
-          Serial.println("Unblocking our scanning task");
+          // Serial.println("Unblocking our scanning task");
           xSemaphoreGive(xDoConnect);
         }
       }
