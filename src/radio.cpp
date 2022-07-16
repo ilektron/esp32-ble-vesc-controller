@@ -271,7 +271,7 @@ void ble_paired(Joystick &j) {
     auto x = j.x();
     auto y = j.y();
     // Clip any bad controls
-    constexpr auto low_cutoff = 0.03f;
+    constexpr auto low_cutoff = 0.005f;
     if (abs(x) < low_cutoff || abs(x) > 1.01f) { x = 0.0f; }
     if (abs(y) < low_cutoff || abs(y) > 1.01f) { y = 0.0f; }
 
@@ -282,7 +282,8 @@ void ble_paired(Joystick &j) {
 
     // constexpr auto current_scale = 1000.0f * 10.0f;
     // controller.setCurrents(current_scale * m1, current_scale * m2);
-    constexpr auto duty_scale = 100000.0f;
+    constexpr auto max_duty = 0.80f; // 80% duty as max
+    constexpr auto duty_scale = 100000.0f * max_duty;
     controller.setDuties(duty_scale * m1, duty_scale * m2);
     vTaskDelay(20u / portTICK_PERIOD_MS);
   }
