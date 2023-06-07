@@ -94,6 +94,7 @@ public:
   packet::VALIDATE_RESULT parse_command(vesc::packet &p) {
     auto res = p.validate();
     if (res == packet::VALIDATE_RESULT::VALID) {
+      // Get the type of packet that is in this data
       auto type = p.data().get<uint8_t>();
 
       switch (type) {
