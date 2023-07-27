@@ -99,30 +99,19 @@ static void notifyCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic, ui
   }
   Serial.println(" <<");
 
-  // In the case we don't have a complete packet, we need to keep it around
-  static vesc::packet last_packet;
-
-  // Parse the packet
-  vesc::packet p;
-
-  if (last_packet.len() > 0) {
-    p.data().append(last_packet.data(), last_packet.len());
-  }
+  // TODO this might need some additional error checking to clean up bad data
+  static vesc::packet p;
   p.data().append(pData, length);
 
-  // Copy the packet back
-  last_packet = p;
+  Serial.printf("Current buffer len: %i\n", p.len());
 
-  // This destroyes the packet so if it fails, we're doomed
   auto res = controller.parse_command(p);
   if (res == vesc::packet::VALIDATE_RESULT::VALID) {
     Serial.println(" We have a valid packet! ");
-    last_packet.data().reset();
   } else if (res == vesc::packet::VALIDATE_RESULT::INCOMPLETE) {
-    Serial.println("Incomplete packet, skipping");
   } else {
     Serial.printf("Bad packet: %i\n", static_cast<unsigned int>(res));
-    last_packet.data().reset();
+    p.data().reset();
   }
 }
 
@@ -283,12 +272,13 @@ void ble_paired(Joystick &j) {
     vTaskDelay(20u / portTICK_PERIOD_MS);
 
     // Control the motors
-    auto x = j.x();
-    auto y = j.y();
+    auto x = -j.x();
+    auto y = -j.y();
     // Clip any bad controls
-    constexpr auto low_cutoff = 0.005f;
-    if (abs(x) < low_cutoff || abs(x) > 1.01f) { x = 0.0f; }
-    if (abs(y) < low_cutoff || abs(y) > 1.01f) { y = 0.0f; }
+    constexpr auto low_cutoff = 0.10f;
+    constexpr auto high_cutoff = 1.01f;
+    if (abs(x) < low_cutoff || abs(x) > high_cutoff) { x = 0.0f; }
+    if (abs(y) < low_cutoff || abs(y) > high_cutoff) { y = 0.0f; }
 
     float m1 = y - x;
     float m2 = y + x;
@@ -297,10 +287,9 @@ void ble_paired(Joystick &j) {
 
     // constexpr auto current_scale = 1000.0f * 10.0f;
     // controller.setCurrents(current_scale * m1, current_scale * m2);
-    // Negative duty inverts joystick for correct config
-    constexpr auto max_duty = -0.60f; // 60% duty as max
-    constexpr auto duty_scale = 100000.0f * max_duty;
-    controller.setDuties(duty_scale * m1, duty_scale * m2);
+    constexpr auto duty_scale = 100000.0f;
+    constexpr auto control_scale = 1.0f;
+    controller.setDuties(duty_scale * m1 * control_scale, duty_scale * m2 * control_scale);
     vTaskDelay(20u / portTICK_PERIOD_MS);
   }
 }
