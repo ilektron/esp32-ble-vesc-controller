@@ -9,6 +9,12 @@ constexpr uint16_t BLE_SIZE = 24;
 constexpr uint16_t BATTERY_WIDTH = 16;
 constexpr uint16_t BATTERY_HEIGHT = 8;
 
+#ifdef USER_LCD_T_QT_PRO_S3
+constexpr auto TFT_ROTATION = 2u;
+#else
+constexpr auto TFT_ROTATION = 0u;
+#endif
+
 static TFT_eSPI tft = TFT_eSPI(TFT_WIDTH, TFT_HEIGHT); // Invoke custom library
 static TFT_eSprite joy = TFT_eSprite(&tft);
 static TFT_eSprite battery = TFT_eSprite(&tft);
@@ -32,14 +38,14 @@ void draw_joystick(Joystick &j) {
   static int last_x = -1;
   static int last_y = -1;
 
-  int x = JOY_SIZE / 2 * -j.x();
-  int y = JOY_SIZE / 2 * j.y();
+  int x = JOY_SIZE / 2 * j.x();
+  int y = JOY_SIZE / 2 * -j.y();
 
   x += JOY_SIZE / 2.0f;
   y += JOY_SIZE / 2.0f;
 
   if (last_x != x || last_y != y) {
-    tft.setRotation(0);
+    tft.setRotation(TFT_ROTATION);
     // Serial.print("posx: ");
     // Serial.print(x);
     // Serial.print("\tposy: ");
@@ -64,7 +70,7 @@ void draw_battery(float battery_voltage) {
 
   // Serial.printf("Battery Percent: %f\n", percent);
 
-  tft.setRotation(0);
+  tft.setRotation(TFT_ROTATION);
   // battery.fillRect((BATTERY_WIDTH - 3) * (1-percent), 1,  1, BATTERY_HEIGHT - 1, TFT_BLACK);
   battery.fillSprite(TFT_BLACK);
   // Draw the outline
@@ -127,7 +133,7 @@ void draw_controller_state(const vesc::controller &controller) {
 
 void init_tft() {
   tft.init();
-  tft.setRotation(1);
+  tft.setRotation(TFT_ROTATION);
   tft.fillScreen(TFT_BLACK);
   tft.setTextSize(2);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
@@ -152,7 +158,7 @@ void init_tft() {
   }
 
   tft.setSwapBytes(true);
-  tft.setRotation(3);
+  tft.setRotation(TFT_ROTATION);
   tft.pushImage(0, 0, TFT_HEIGHT, TFT_WIDTH, steveplusplus);
   vTaskDelay(500 / portTICK_PERIOD_MS);
   tft.fillScreen(TFT_BLACK);

@@ -88,7 +88,7 @@ class controller {
 
 public:
   // TODO change the second vesc id in order to read it
-  controller() : _fw{}, _mc_values{}, _secondVescId{95} {}
+  controller() : _fw{}, _mc_values{}, _secondVescId{73} {}
   ~controller() = default;
   // TODO return comm result
   packet::VALIDATE_RESULT parse_command(vesc::packet &p) {

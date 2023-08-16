@@ -1,7 +1,7 @@
 #include "joystick.h"
 #include <cmath>
 
-constexpr auto ADC_RESOLUTION = 4095.0f;
+constexpr auto ADC_RESOLUTION = 65536.0f/2;
 constexpr auto EXPO = 2.0f;
 
 float Joystick::x() {

@@ -109,6 +109,7 @@ static void notifyCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic, ui
   if (res == vesc::packet::VALIDATE_RESULT::VALID) {
     Serial.println(" We have a valid packet! ");
   } else if (res == vesc::packet::VALIDATE_RESULT::INCOMPLETE) {
+    Serial.println("Incomplete packet");
   } else {
     Serial.printf("Bad packet: %i\n", static_cast<unsigned int>(res));
     p.data().reset();
@@ -272,16 +273,22 @@ void ble_paired(Joystick &j) {
     vTaskDelay(20u / portTICK_PERIOD_MS);
 
     // Control the motors
-    auto x = -j.x();
-    auto y = -j.y();
+    auto x = j.x();
+    auto y = j.y();
     // Clip any bad controls
-    constexpr auto low_cutoff = 0.10f;
+    // TODO: Need to subtract the deadzone out of the control to prevent a jump
+    constexpr auto low_cutoff = 0.02f;
     constexpr auto high_cutoff = 1.01f;
     if (abs(x) < low_cutoff || abs(x) > high_cutoff) { x = 0.0f; }
     if (abs(y) < low_cutoff || abs(y) > high_cutoff) { y = 0.0f; }
 
-    float m1 = y - x;
-    float m2 = y + x;
+    // Scale the x factor when turning to make turning smoother and make more sense
+    // Expo is in joystick.cpp
+    auto TURN_SCALE = 0.5f;
+    auto scaled_x = x * TURN_SCALE;
+    
+    float m1 = y - scaled_x;
+    float m2 = y + scaled_x;
 
     Serial.printf("Setting motors to: %10.2f,\t%10.2f\n", m1, m2);
 

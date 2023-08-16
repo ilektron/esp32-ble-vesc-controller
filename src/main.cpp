@@ -11,14 +11,15 @@
 #include "esp_adc_cal.h"
 #include "joystick.h"
 #include "radio.h"
-#include "soc/rtc_wdt.h"
+//#include "hal/wdt_hal.h"
 #include <BluetoothSerial.h>
 #include <Button2.h>
 #include <array>
 #include <Adafruit_ADS1X15.h>
 
 #define ADC_EN 14 // ADC_EN is the ADC detection enable port
-#define ADC_VIN_PIN 34
+//#define ADC_VIN_PIN 34
+#define ADC_VIN_PIN 4
 #define BUTTON_1 35
 #define BUTTON_2 0
 
@@ -44,8 +45,8 @@ float battery_voltage = 0.0f;
 // the setup function runs once when you press reset or power the board
 void setup() {
 
-  rtc_wdt_protect_off();
-  rtc_wdt_disable();
+  //rtc_wdt_protect_off();
+  //rtc_wdt_disable();
   // initialize serial communication at 115200 bits per second:
   Serial.begin(1000000);
   Serial.println("Start");
@@ -65,13 +66,13 @@ void setup() {
                           nullptr, ARDUINO_RUNNING_CORE);
 
   xTaskCreatePinnedToCore(TaskAnalogReadVin, "AnalogReadVin",
-                          2024, // Stack size
+                          4096, // Stack size
                           nullptr,
                           2, // Priority
                           nullptr, ARDUINO_RUNNING_CORE);
 
   xTaskCreatePinnedToCore(TaskDisplay, "Display",
-                          2048, // Stack size
+                          4096, // Stack size
                           nullptr,
                           1, // Priority
                           nullptr, ARDUINO_RUNNING_CORE);
@@ -119,9 +120,19 @@ void TaskAnalogReadVin(void *pvParameters) // This is a task.
 {
   (void)pvParameters;
 
+  // Need to set up which I2C pins are used for the S3 chip
+  constexpr auto I2C_SDA = 48;
+  constexpr auto I2C_SCL = 18;
+  auto adc_i2c = TwoWire(0);
+  // We use pins 
+  adc_i2c.begin(I2C_SDA, I2C_SCL, 100000);
+
   Adafruit_ADS1115 ads;
-  if (!ads.begin()) {
+  if (!ads.begin(72U, &adc_i2c)) {
     Serial.println("Failed to initialize ADS.");
+    sleep(10);
+  } else {
+    Serial.println("ADC I2C Initialized");
   }
   // Check of calibration
 
@@ -139,6 +150,7 @@ void TaskAnalogReadVin(void *pvParameters) // This is a task.
       esp_adc_cal_characterize(static_cast<adc_unit_t>(ADC_UNIT_1), static_cast<adc_atten_t>(ADC1_CHANNEL_6),
                                static_cast<adc_bits_width_t>(ADC_WIDTH_BIT_12), 1100, &adc_chars);
 
+  Serial.println("Reading ADC for battery...");
   // Check type of calibration value used to characterize ADC
   if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
     Serial.printf("eFuse Vref:%u mV", adc_chars.vref);
