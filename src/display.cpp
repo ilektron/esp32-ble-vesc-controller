@@ -3,6 +3,7 @@
 #include "display.h"
 #include "bmp.h"
 #include "radio.h"
+#include <TFT_eWidget.h>
 
 constexpr uint16_t JOY_SIZE = 24;
 constexpr uint16_t BLE_SIZE = 24;
@@ -57,6 +58,21 @@ void draw_joystick(Joystick &j) {
     last_x = x;
     last_y = y;
   }
+}
+
+void draw_current(float left, float right)
+{
+  // Do something
+}
+
+void draw_rpm(float left, float right)
+{
+  // Do something
+}
+
+void draw_speed(float left, float right)
+{
+  // Do something
 }
 
 void draw_battery(float battery_voltage) {

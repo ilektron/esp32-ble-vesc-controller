@@ -4,3 +4,6 @@
 [submodule "lib/VescUart"]
 	path = lib/VescUart
 	url = git@github.com:ilektron/VescUart.git
+[submodule "lib/TFT_eWidget"]
+	path = lib/TFT_eWidget
+	url = https://github.com/Bodmer/TFT_eWidget.git
