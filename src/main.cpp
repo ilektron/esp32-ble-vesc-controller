@@ -11,6 +11,7 @@
 #include "esp_adc_cal.h"
 #include "joystick.h"
 #include "radio.h"
+#include "screen.h"
 //#include "hal/wdt_hal.h"
 #include <BluetoothSerial.h>
 #include <Button2.h>
@@ -20,8 +21,12 @@
 #define ADC_EN 14 // ADC_EN is the ADC detection enable port
 //#define ADC_VIN_PIN 34
 #define ADC_VIN_PIN 4
-#define BUTTON_1 35
-#define BUTTON_2 0
+#ifndef BUTTON_1
+  #define BUTTON_1 35
+#endif
+#ifndef BUTTON_2
+  #define BUTTON_2 0
+#endif
 
 Button2 btn1(BUTTON_1);
 Button2 btn2(BUTTON_2);
@@ -79,7 +84,7 @@ void setup() {
 
   // TODO: Could pin this to the alternate core so that we have the most reliable communication
   xTaskCreatePinnedToCore(TaskRadio, "Radio",
-                          8192 * 2, // Stack size
+                          8192 * 2 + 4096, // Stack size
                           nullptr,
                           4, // Priority
                           nullptr, ARDUINO_RUNNING_CORE);
@@ -101,10 +106,33 @@ void TaskButton(void *pvParameters) // This is a task.
 
   btn1.setPressedHandler([](Button2 &b) {
     // Right Button
+    Serial.println("Button 1");
   });
+
+  btn1.setLongClickHandler([](Button2 &b) {
+    // Right Button
+    Serial.println("Button 1 Long Press");
+  });
+  
+  btn1.setDoubleClickHandler([](Button2 &b) {
+    // Right Button
+    Serial.println("Button 1 Double Click");
+  });
+
 
   btn2.setPressedHandler([](Button2 &b) {
     // Left Button
+    Serial.println("Button 2");
+  });
+  
+  btn2.setLongClickHandler([](Button2 &b) {
+    // Right Button
+    Serial.println("Button 2 Long Press");
+  });
+
+  btn2.setDoubleClickHandler([](Button2 &b) {
+    // Right Button
+    Serial.println("Button 2 Double Click");
   });
 
   constexpr auto xDelay = 10u / portTICK_PERIOD_MS;
@@ -184,14 +212,14 @@ void TaskAnalogReadVin(void *pvParameters) // This is a task.
       adc2 = ads.readADC_SingleEnded(2);
       joystick.set_pos(adc0, adc1);
 
-      volts0 = ads.computeVolts(adc0);
-      volts1 = ads.computeVolts(adc1);
-      volts2 = ads.computeVolts(adc2);
+      // volts0 = ads.computeVolts(adc0);
+      // volts1 = ads.computeVolts(adc1);
+      // volts2 = ads.computeVolts(adc2);
 
-      Serial.println("-------------");
-      Serial.print("AIN0: "); Serial.print(adc0); Serial.print("  "); Serial.print(volts0); Serial.println("V");
-      Serial.print("AIN1: "); Serial.print(adc1); Serial.print("  "); Serial.print(volts1); Serial.println("V");
-      Serial.print("AIN2: "); Serial.print(adc2); Serial.print("  "); Serial.print(volts2); Serial.println("V");
+      // Serial.println("-------------");
+      // Serial.print("AIN0: "); Serial.print(adc0); Serial.print("  "); Serial.print(volts0); Serial.println("V");
+      // Serial.print("AIN1: "); Serial.print(adc1); Serial.print("  "); Serial.print(volts1); Serial.println("V");
+      // Serial.print("AIN2: "); Serial.print(adc2); Serial.print("  "); Serial.print(volts2); Serial.println("V");
     }
     vTaskDelay(xDelay); // one tick delay (15ms) in between reads for stability
   }
@@ -201,14 +229,18 @@ void TaskDisplay(void *pvParameters) // This is a task.
 {
   (void)pvParameters;
 
+  std::array<screen, 1> screens = {screen([&](){
+      draw_joystick(joystick);
+      draw_battery(battery_voltage);
+      draw_ble_state();
+      draw_controller_state(controller);
+      return true;})};
+
   init_tft();
 
   constexpr auto xDelay = 30u / portTICK_PERIOD_MS;
   for (;;) {
-    draw_joystick(joystick);
-    draw_battery(battery_voltage);
-    draw_ble_state();
-    draw_controller_state(controller);
+    screens[0].draw();
     vTaskDelay(xDelay);
   }
 }

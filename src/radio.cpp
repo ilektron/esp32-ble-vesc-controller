@@ -44,6 +44,8 @@ void ble_reset();
 void ble_scanning();
 
 // Scan for BLE servers and find the first one that advertises the Nordic UART service.
+// Should probably make a list of all the Nordic UART services and figure out if we
+// have a preferred client to connect to
 class AdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   /**
       Called for each advertising BLE server.

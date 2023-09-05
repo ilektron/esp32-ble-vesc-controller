@@ -5,9 +5,10 @@ class Joystick {
 		Joystick() = default;
 		~Joystick() = default;
 
-    void set_zeros(int x, int y) { _zx = x; _zy = y; }
+    void set_zeros(int x, int y, int z = 0) { _zx = x; _zy = y; }
 		int get_zero_x() { return _zx; }
 		int get_zero_y() { return _zy; }
+		int get_zero_z() { return _zz; }
 
 		void set_pos(int x, int y) { _x = x; _y = y; }
 		// Gets the corrected values from -1 to 1 for the joystick
@@ -17,7 +18,9 @@ class Joystick {
 	private:
 		int _x;
 		int _y;
+		int _z;
 
 		int _zx;
 		int _zy;
+		int _zz;
 };

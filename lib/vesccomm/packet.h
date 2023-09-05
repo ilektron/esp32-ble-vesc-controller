@@ -49,7 +49,11 @@ public:
   // Used for reading out the data
   buffer<PACKET_MAX_LEN> &data() { return _buffer; }
 
+  // Returns how much data is in 
   const size_t len() { return _buffer.len(); }
+
+  // Returns the length of the next valid chunk
+  const size_t valid_len() { return _mlen; }
 
   operator uint8_t *() { return _buffer; }
 
@@ -76,7 +80,7 @@ public:
         if (_buffer.get<uint8_t>() == 3u) {
           _buffer.reload();
           _buffer.advance(start);
-          _buffer.truncate(crc_end_bytes);
+          _mlen = mlen;
           return VALIDATE_RESULT::VALID;
         } else {
           return VALIDATE_RESULT::BAD_END;
@@ -91,8 +95,19 @@ public:
     return VALIDATE_RESULT::INCOMPLETE;
   }
 
+  void clear_crc() {
+    constexpr auto crc_end_bytes = 3u;
+    _buffer.advance(crc_end_bytes);
+  }
+
+  // Moves any data to the front of the buffer and clears any mess
+  void clean() {
+    _buffer.clean();
+  }
+
 private:
   buffer<PACKET_MAX_LEN> _buffer;
+  uint16_t _mlen;
 };
 
 }; // namespace vesc

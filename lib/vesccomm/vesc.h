@@ -94,23 +94,35 @@ public:
   packet::VALIDATE_RESULT parse_command(vesc::packet &p) {
     auto res = p.validate();
     if (res == packet::VALIDATE_RESULT::VALID) {
+      // Should create a copy of the packet, and clear out the buffer for receive
+      vesc::packet vp(p.data().begin(), p.valid_len());
+      // At this point we should make sure the buffer is cleaned of this packet. Trim off the CRC?
+      // 5u is the length of the overhead?
+      static const auto crc_bytes = 3u;
+      //Serial.printf("Cleaning %i bytes, buffer size %i\n", crc_bytes + p.valid_len(), p.len());
+      p.data().advance(crc_bytes + p.valid_len());
+      p.clean();
+      // Serial.println("Clean");
+
       // Get the type of packet that is in this data
-      auto type = p.data().get<uint8_t>();
+      auto type = vp.data().get<uint8_t>();
+      
 
       switch (type) {
-      case COMM_FW_VERSION: handleFw(p, _fw); break;
-      case COMM_GET_VALUES: handleGetValues(p); break;
-      case COMM_GET_VALUES_SELECTIVE: handleGetValuesSelective(p, p.data().get<uint8_t>()); break;
+      case COMM_FW_VERSION: Serial.println("Handle Packet FW"); handleFw(vp, _fw); break;
+      case COMM_GET_VALUES: Serial.println("Handle Packet Get Values"); handleGetValues(vp); break;
+      case COMM_GET_VALUES_SELECTIVE: Serial.println("Handle Packet Get Values Selective"); handleGetValuesSelective(vp, vp.data().get<uint8_t>()); break;
       default: Serial.printf("Unhandled packet type: %i\n", type);
       }
 
       // Call any custom callbacks for this packet type
       auto callback = _callbacks.find(type);
       if (callback != _callbacks.end()) {
+        Serial.println("Handling custom packet type");
         // Call the callback that was assigned to this packet type
         // Maybe shouldn't be a map, could want multiple callbacks?
         // Could possibly just make an array of 256 values since we know that will be the max.
-        callback->second(p);
+        callback->second(vp);
       }
     }
     return res;

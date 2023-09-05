@@ -144,7 +144,7 @@ public:
     _head = _data.begin();
   }
 
-  // This doesn't work as intended
+  // Reset the head to the start of the buffer
   void reload() {
     if (_head == _data.end()) {
       _len = _data.size();
@@ -156,6 +156,10 @@ public:
 
   // Skip forward without returning data
   void advance(size_t count) {
+    auto remaining = std::distance(_head, _data.end());
+    if (count > remaining) {
+      count = remaining;
+    }
     _head += count;
     _len -= count;
   }
@@ -163,8 +167,11 @@ public:
   // Remove some data off the end of the buffer
   void truncate(size_t count) { _len = _len > count ? _len - count : 0u; }
 
-  // Move the contents to the left by count
-  void shift(size_t count) {}
+  // Clear the chaff
+  void clean() {
+    std::copy(_head, _head + _len, _data.begin());
+    _head = _data.begin();
+  }
 
   typename std::array<uint8_t, _size>::iterator begin() { return _head; }
   typename std::array<uint8_t, _size>::iterator end() { return _head + _len; }
