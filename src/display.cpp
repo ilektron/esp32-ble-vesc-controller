@@ -3,7 +3,6 @@
 #include "display.h"
 #include "bmp.h"
 #include "radio.h"
-#include <TFT_eWidget.h>
 
 constexpr uint16_t JOY_SIZE = 24;
 constexpr uint16_t BLE_SIZE = 24;
@@ -62,7 +61,7 @@ void draw_joystick(Joystick &j) {
 
 void draw_current(float left, float right)
 {
-  // Do something
+
 }
 
 void draw_rpm(float left, float right)
@@ -73,6 +72,28 @@ void draw_rpm(float left, float right)
 void draw_speed(float left, float right)
 {
   // Do something
+}
+
+void draw_raw_joystick_values(Joystick &j) 
+{
+
+  auto line = 32ul;
+  constexpr auto lh = 12u;
+  // TODO clear the screen
+
+  std::array<char, 100> s;
+  sprintf(s.data(), "X:     %4.1f   ", j.x());
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "Y:     %4.1f   ", j.y());
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "Z:     %4.1f   ", j.z());
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "Raw X: %i   ", j.raw_x());
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "Raw Y: %i   ", j.raw_y());
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "Raw Z: %i   ", j.raw_z());
+  tft.drawString(s.data(), 0, line); line += lh;
 }
 
 void draw_battery(float battery_voltage) {
@@ -132,17 +153,41 @@ void draw_controller_state(const vesc::controller &controller) {
 
   std::array<char, 100> s;
   auto values = controller.values();
-  sprintf(s.data(), "vescid:\t%i", values.vesc_id);
+  sprintf(s.data(), "vescid:  %i    ", values.vesc_id);
   tft.drawString(s.data(), 0, line); line += lh;
-  sprintf(s.data(), "Vin:\t%4.1f", values.v_in);
+  sprintf(s.data(), "Vin:     %4.1f    ", values.v_in);
   tft.drawString(s.data(), 0, line); line += lh;
-  sprintf(s.data(), "current:\t%4.1f", values.current_in);
+  sprintf(s.data(), "current: %4.1f    ", values.current_in);
   tft.drawString(s.data(), 0, line); line += lh;
-  sprintf(s.data(), "rpm:\t%10.1f", values.rpm);
+  sprintf(s.data(), "rpm:     %10.1f    ", values.rpm);
   tft.drawString(s.data(), 0, line); line += lh;
-  sprintf(s.data(), "ah:\t%4.1f", values.amp_hours);
+  sprintf(s.data(), "ah:      %4.1f    ", values.amp_hours);
   tft.drawString(s.data(), 0, line); line += lh;
-  sprintf(s.data(), "fault:\t%4i", values.fault_code);
+  sprintf(s.data(), "fault:   %4i    ", values.fault_code);
+  tft.drawString(s.data(), 0, line); line += lh;
+
+}
+
+void draw_controller2_state(const vesc::controller &controller) {
+  const auto hw = "Connected to: " + controller.getHW();
+
+  auto line = 32ul;
+  constexpr auto lh = 12u;
+  if (hw.length()) { tft.drawString(hw.c_str(), 0, line); line += lh; }
+
+  std::array<char, 100> s;
+  auto values = controller.values2();
+  sprintf(s.data(), "vescid:  %i    ", values.vesc_id);
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "Vin:     %4.1f    ", values.v_in);
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "current: %4.1f    ", values.current_in);
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "rpm:     %10.1f    ", values.rpm);
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "ah:      %4.1f    ", values.amp_hours);
+  tft.drawString(s.data(), 0, line); line += lh;
+  sprintf(s.data(), "fault:   %4i    ", values.fault_code);
   tft.drawString(s.data(), 0, line); line += lh;
 
 }

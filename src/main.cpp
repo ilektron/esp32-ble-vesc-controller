@@ -33,6 +33,9 @@ Button2 btn2(BUTTON_2);
 
 Joystick joystick;
 
+constexpr int SCREEN_COUNT = 3;
+int current_screen = 0;
+
 QueueHandle_t xBLEQueue;
 QueueHandle_t xDisplayQueue;
 
@@ -107,6 +110,8 @@ void TaskButton(void *pvParameters) // This is a task.
   btn1.setPressedHandler([](Button2 &b) {
     // Right Button
     Serial.println("Button 1");
+    if (current_screen == 0) { current_screen = SCREEN_COUNT; }
+    current_screen -= 1;
   });
 
   btn1.setLongClickHandler([](Button2 &b) {
@@ -123,6 +128,8 @@ void TaskButton(void *pvParameters) // This is a task.
   btn2.setPressedHandler([](Button2 &b) {
     // Left Button
     Serial.println("Button 2");
+    current_screen += 1;
+    if (current_screen == SCREEN_COUNT) { current_screen = 0; }
   });
   
   btn2.setLongClickHandler([](Button2 &b) {
@@ -192,7 +199,10 @@ void TaskAnalogReadVin(void *pvParameters) // This is a task.
   constexpr auto xDelay = 100u / portTICK_PERIOD_MS;
 
   // Get zero levels for the joystick
-  joystick.set_zeros(ads.readADC_SingleEnded(0),ads.readADC_SingleEnded(1));
+  joystick.set_zeros(
+    ads.readADC_SingleEnded(0),
+    ads.readADC_SingleEnded(1), 
+    ads.readADC_SingleEnded(2));
 
   for (;;) {
     uint16_t v = analogRead(ADC_VIN_PIN);
@@ -210,7 +220,7 @@ void TaskAnalogReadVin(void *pvParameters) // This is a task.
       adc0 = ads.readADC_SingleEnded(0);
       adc1 = ads.readADC_SingleEnded(1);
       adc2 = ads.readADC_SingleEnded(2);
-      joystick.set_pos(adc0, adc1);
+      joystick.set_pos(adc0, adc1, adc2);
 
       // volts0 = ads.computeVolts(adc0);
       // volts1 = ads.computeVolts(adc1);
@@ -229,18 +239,30 @@ void TaskDisplay(void *pvParameters) // This is a task.
 {
   (void)pvParameters;
 
-  std::array<screen, 1> screens = {screen([&](){
+  std::array<screen, SCREEN_COUNT> screens = {
+    screen([&](){
       draw_joystick(joystick);
       draw_battery(battery_voltage);
       draw_ble_state();
       draw_controller_state(controller);
+      return true;}), 
+    screen([&](){
+      draw_joystick(joystick);
+      draw_battery(battery_voltage);
+      draw_ble_state();
+      draw_controller2_state(controller);
+      return true;}), 
+    screen([&](){
+      draw_joystick(joystick);
+      draw_battery(battery_voltage);
+      draw_raw_joystick_values(joystick);
       return true;})};
 
   init_tft();
 
   constexpr auto xDelay = 30u / portTICK_PERIOD_MS;
   for (;;) {
-    screens[0].draw();
+    screens[current_screen].draw();
     vTaskDelay(xDelay);
   }
 }

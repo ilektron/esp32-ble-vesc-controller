@@ -219,6 +219,7 @@ void ble_scanning() {
   vSemaphoreDelete(xDoConnect);
 }
 
+// TODO Keep on going through all devices and then see if we have more than one available
 void ble_found_device() {
   static std::unique_ptr<BLEClient> pClient{};
 
@@ -248,6 +249,7 @@ void ble_get_device_info() {
   static vesc::buffer<1u> fwp = {COMM_FW_VERSION};
   static vesc::packet fwpacket(fwp);
 
+  // TODO: Validate the hardware info
   controller.setCallback(COMM_FW_VERSION, [&](vesc::packet &p) {
     bleState = BLEState::PAIRED;
     Serial.println("Successfully read device info");
@@ -263,6 +265,7 @@ void ble_get_device_info() {
 
 void ble_paired(Joystick &j) {
 
+  static bool second = false;
   static auto cb = controller.setCallback(COMM_GET_VALUES, [&](vesc::packet &p) { Serial.println("+"); });
 
   if (cb) {
@@ -270,7 +273,14 @@ void ble_paired(Joystick &j) {
 
     // Read all the values.
     // TODO: Change this to only retrieve what we need
-    controller.getValues();
+    if (second)
+    {
+      controller.getSecondValues();
+      second = false;
+    } else {
+      controller.getValues();
+      second = true;
+    }
 
     vTaskDelay(20u / portTICK_PERIOD_MS);
 

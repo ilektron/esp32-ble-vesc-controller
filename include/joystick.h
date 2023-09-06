@@ -6,7 +6,7 @@ class Joystick {
 		Joystick(float mexpo) : _x{}, _y{}, _z{}, _zx{}, _zy{}, _zz{}, _expo(mexpo) {}
 		~Joystick() = default;
 
-		void set_zeros(int x, int y, int z = 0) { _zx = x; _zy = y; _zz = 0; }
+		void set_zeros(int x, int y, int z = 0) { _zx = x; _zy = y; _zz = z; }
 		int get_zero_x() { return _zx; }
 		int get_zero_y() { return _zy; }
 		int get_zero_z() { return _zz; }
@@ -17,6 +17,10 @@ class Joystick {
 		float x();
 		float y();
 		float z();
+
+		int raw_x() { return _x; }
+		int raw_y() { return _y; }
+		int raw_z() { return _z; }
 
 		float expo() { return _expo; }
 		void set_expo(float mexpo) { _expo = mexpo; }

@@ -88,7 +88,7 @@ class controller {
 
 public:
   // TODO change the second vesc id in order to read it
-  controller() : _fw{}, _mc_values{}, _secondVescId{73} {}
+  controller() : _fw{}, _mc_values{}, _mc_values2{}, _secondVescId{73} {}
   ~controller() = default;
   // TODO return comm result
   packet::VALIDATE_RESULT parse_command(vesc::packet &p) {
@@ -118,7 +118,7 @@ public:
       // Call any custom callbacks for this packet type
       auto callback = _callbacks.find(type);
       if (callback != _callbacks.end()) {
-        Serial.println("Handling custom packet type");
+        Serial.printf("Handling custom packet type %i\n", type);
         // Call the callback that was assigned to this packet type
         // Maybe shouldn't be a map, could want multiple callbacks?
         // Could possibly just make an array of 256 values since we know that will be the max.
@@ -137,6 +137,7 @@ public:
   float getVoltage() const { return _mc_values.v_in; }
 
   const mc_values &values() const { return _mc_values; }
+  const mc_values &values2() const { return _mc_values2; }
 
   bool setCallback(uint8_t packet_type, std::function<void(packet &p)> f) {
     _callbacks[packet_type] = f;
@@ -148,15 +149,24 @@ public:
   void setTX(std::function<void(uint8_t *data, std::size_t len, bool response)> tx) { _tx = tx; }
 
   // Get information from the controller
-  bool getValues(uint32_t mask = 0xFFFFFFFF) {
+  bool getValues(uint32_t mask = 0xFFFFFFFF, int id = -1) {
     if (_tx) {
-      static vesc::buffer<1u> vp = {COMM_GET_VALUES};
-      static vesc::packet vpacket(vp);
-      _tx(vpacket, vpacket.len(), true);
+      vesc::buffer<7u> payload;
+      if (id > 0) {
+        payload.append<uint8_t>(COMM_FORWARD_CAN);
+        payload.append<uint8_t>(id);
+      }
+      payload.append<uint8_t>(COMM_GET_VALUES);
+      vesc::packet p(payload);
+      _tx(p, p.len(), true);
     } else {
       return false;
     }
     return true;
+  }
+
+  bool getSecondValues(uint32_t mask = 0xFFFFFFFF) {
+    return getValues(mask, _secondVescId);
   }
 
   // Set the current for a motor
@@ -230,7 +240,7 @@ public:
 
 private:
   fw_params _fw;
-  mc_values _mc_values;
+  mc_values _mc_values, _mc_values2;
   uint8_t _secondVescId;
   std::map<uint8_t, std::function<void(packet &p)>> _callbacks;
   std::function<void(uint8_t *data, std::size_t len, bool response)> _tx;
@@ -262,49 +272,65 @@ private:
   // TODO: Change to use std::bitset and define these shifted values
   void handleGetValuesSelective(packet &p, uint32_t mask) {
 
+    // Need to check if this is the current vesc, or the forwarded vesc
+    vesc::mc_values vals;
+
     std::bitset<32> m(mask);
     auto &buf = p.data();
     // mask locations
-    if (mask & values::TEMP_MOS) { _mc_values.temp_mos = buf.getfp(2, 10.0f); }
-    if (mask & values::TEMP_MOTOR) { _mc_values.temp_motor = buf.getfp(2, 10.0f); }
-    if (mask & values::CURRENT_MOTOR) { _mc_values.current_motor = buf.getfp(4, 100.0f); }
-    if (mask & values::CURRENT_IN) { _mc_values.current_in = buf.getfp(4, 100.0f); }
-    if (mask & values::ID) { _mc_values.id = buf.getfp(4, 100.0f); }
-    if (mask & values::IQ) { _mc_values.iq = buf.getfp(4, 100.0f); }
-    if (mask & values::DUTY_NOW) { _mc_values.duty_now = buf.getfp(2, 1000.0f); }
-    if (mask & values::RPM) { _mc_values.rpm = buf.getfp(4, 1.0f); }
-    if (mask & values::V_IN) { _mc_values.v_in = buf.getfp(2, 10.0f); }
-    if (mask & values::AMP_HOURS) { _mc_values.amp_hours = buf.getfp(4, 10000.0f); }
-    if (mask & values::AMP_HOURS_CHARGED) { _mc_values.amp_hours_charged = buf.getfp(4, 10000.0f); }
-    if (mask & values::WATT_HOURS) { _mc_values.watt_hours = buf.getfp(4, 10000.0f); }
-    if (mask & values::WATT_HOURS_CHARGED) { _mc_values.watt_hours_charged = buf.getfp(4, 10000.0f); }
-    if (mask & values::TACHOMETER) { _mc_values.tachometer = buf.get<int32_t>(); }
-    if (mask & values::TACHOMETER_ABS) { _mc_values.tachometer_abs = buf.get<int32_t>(); }
-    if (mask & values::FAULT_CODE) { _mc_values.fault_code = mc_fault_code(buf.get<uint8_t>()); }
+    if (mask & values::TEMP_MOS) { vals.temp_mos = buf.getfp(2, 10.0f); }
+    if (mask & values::TEMP_MOTOR) { vals.temp_motor = buf.getfp(2, 10.0f); }
+    if (mask & values::CURRENT_MOTOR) { vals.current_motor = buf.getfp(4, 100.0f); }
+    if (mask & values::CURRENT_IN) { vals.current_in = buf.getfp(4, 100.0f); }
+    if (mask & values::ID) { vals.id = buf.getfp(4, 100.0f); }
+    if (mask & values::IQ) { vals.iq = buf.getfp(4, 100.0f); }
+    if (mask & values::DUTY_NOW) { vals.duty_now = buf.getfp(2, 1000.0f); }
+    if (mask & values::RPM) { vals.rpm = buf.getfp(4, 1.0f); }
+    if (mask & values::V_IN) { vals.v_in = buf.getfp(2, 10.0f); }
+    if (mask & values::AMP_HOURS) { vals.amp_hours = buf.getfp(4, 10000.0f); }
+    if (mask & values::AMP_HOURS_CHARGED) { vals.amp_hours_charged = buf.getfp(4, 10000.0f); }
+    if (mask & values::WATT_HOURS) { vals.watt_hours = buf.getfp(4, 10000.0f); }
+    if (mask & values::WATT_HOURS_CHARGED) { vals.watt_hours_charged = buf.getfp(4, 10000.0f); }
+    if (mask & values::TACHOMETER) { vals.tachometer = buf.get<int32_t>(); }
+    if (mask & values::TACHOMETER_ABS) { vals.tachometer_abs = buf.get<int32_t>(); }
+    if (mask & values::FAULT_CODE) { vals.fault_code = mc_fault_code(buf.get<uint8_t>()); }
 
     if (buf.len() >= 4) {
-      if (mask & values::POSITION) { _mc_values.position = buf.getfp(4, 1000000.0f); }
+      if (mask & values::POSITION) { vals.position = buf.getfp(4, 1000000.0f); }
     } else {
-      _mc_values.position = -1.0;
+      vals.position = -1.0;
     }
 
     if (buf.len() >= 1) {
-      if (mask & values::VESC_ID) { _mc_values.vesc_id = buf.get<uint8_t>(); }
+      if (mask & values::VESC_ID) { vals.vesc_id = buf.get<uint8_t>(); }
     } else {
-      _mc_values.vesc_id = 255u;
+      vals.vesc_id = 255u;
     }
 
     if (buf.len() >= 6) {
       if (mask & values::TEMP_MOSX) {
-        _mc_values.temp_mos1 = buf.getfp(2, 10.0f);
-        _mc_values.temp_mos2 = buf.getfp(2, 10.0f);
-        _mc_values.temp_mos3 = buf.getfp(2, 10.0f);
+        vals.temp_mos1 = buf.getfp(2, 10.0f);
+        vals.temp_mos2 = buf.getfp(2, 10.0f);
+        vals.temp_mos3 = buf.getfp(2, 10.0f);
       }
     }
 
     if (buf.len() >= 8) {
-      if (mask & values::VD) { _mc_values.vd = buf.getfp(4, 1000.0f); }
-      if (mask & values::VQ) { _mc_values.vq = buf.getfp(4, 1000.0f); }
+      if (mask & values::VD) { vals.vd = buf.getfp(4, 1000.0f); }
+      if (mask & values::VQ) { vals.vq = buf.getfp(4, 1000.0f); }
+    }
+
+    // TODO need to check if the vals were received this time because we're going to blow away other
+    // values that may not have been retrieved this time
+    if (vals.vesc_id == _secondVescId)
+    {
+      // Serial.println("Got Second vesc values!");
+      _mc_values2 = vals;
+    } else if (vals.vesc_id == 28) {
+      // Serial.println("Got primary vesc values!");
+      _mc_values = vals;
+    } else {
+      // Serial.printf("Where did this come from? %i\n", vals.vesc_id);
     }
   }
 };
