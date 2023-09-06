@@ -4,22 +4,24 @@
 constexpr auto ADC_RESOLUTION = 65536.0f/2;
 constexpr auto EXPO = 2.0f;
 
-float Joystick::x() {
-  float scale_x = _zx/(ADC_RESOLUTION/2.0f);
-  float fx = (_x - _zx)/(ADC_RESOLUTION/2.0f);
-  fx = fx < 0 ? -pow(fx, EXPO) : pow(fx, EXPO);
-  // Scale from -1 to 1?
-  float x = (fx < 0) ? (fx / scale_x) : (fx * scale_x);
+const float calc_pos(int raw, int zero) {
+  float scale = zero/(ADC_RESOLUTION/2.0f);
+  float diff = (raw - zero)/(ADC_RESOLUTION/2.0f);
+  diff = diff < 0 ? -pow(-diff, EXPO) : pow(diff, EXPO);
+  // scale from -1 to 1?
+  float val = (diff < 0) ? (diff / scale) : (diff * scale);
 
-	return x;
+  return val;
+}
+
+float Joystick::x() {
+  return calc_pos(_x, _zx);
 }
 
 float Joystick::y() {
-	// Figure out the proportion from zero to the value
-  float scale_y = _zy/(ADC_RESOLUTION/2.0f);
-  float fy = (_y - _zy)/(ADC_RESOLUTION/2.0f);
-  fy = fy < 0 ? -pow(fy, EXPO) : pow(fy, EXPO);
-  float y = (fy < 0) ? fy / scale_y : fy * scale_y;
+  return calc_pos(_y, _zy);
+}
 
-	return y;
+float Joystick::z() {
+  return calc_pos(_z, _zz);
 }
